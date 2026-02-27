@@ -18,7 +18,7 @@ mkdir -p "$APP_BUNDLE/Contents/MacOS"
 cp "$BUILD_DIR/$APP_NAME" "$APP_BUNDLE/Contents/MacOS/"
 
 # Copy Info.plist
-cp "$SCRIPT_DIR/Sources/CautusRemote/Resources/Info.plist" "$APP_BUNDLE/Contents/"
+cp "$SCRIPT_DIR/src/cautus-remote/Resources/Info.plist" "$APP_BUNDLE/Contents/"
 
 echo "Launching $APP_NAME..."
 open "$APP_BUNDLE"

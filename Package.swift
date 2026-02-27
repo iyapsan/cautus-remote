@@ -23,13 +23,13 @@ let package = Package(
                 .product(name: "NIOSSH", package: "swift-nio-ssh"),
                 .product(name: "SwiftTerm", package: "SwiftTerm"),
             ],
-            path: "Sources/CautusRemote",
+            path: "src/cautus-remote",
             exclude: ["Resources/Info.plist"]
         ),
         .testTarget(
             name: "CautusRemoteTests",
             dependencies: ["CautusRemote"],
-            path: "Tests/CautusRemoteTests"
+            path: "tests/unit-tests"
         ),
     ]
 )
