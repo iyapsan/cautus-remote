@@ -1,0 +1,26 @@
+services:
+  # Direct SSH target
+  ssh-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.test-ssh
+    container_name: cautus-ssh-server
+    ports:
+      - "2222:22"
+    networks:
+      - ssh-net
+
+  # Jump host (bastion) — connects to ssh-server via internal network
+  jump-host:
+    build:
+      context: .
+      dockerfile: Dockerfile.test-ssh
+    container_name: cautus-jump-host
+    ports:
+      - "2223:22"
+    networks:
+      - ssh-net
+
+networks:
+  ssh-net:
+    driver: bridge
