@@ -34,6 +34,16 @@ public class RDPContext {
         return rdp_poll(ctx, Int32(timeoutMs))
     }
     
+    public func sendKeyboardInput(flags: UInt16, scancode: UInt16) {
+        guard let ctx = ctx else { return }
+        rdp_send_input_keyboard(ctx, flags, scancode)
+    }
+    
+    public func sendMouseInput(flags: UInt16, x: UInt16, y: UInt16) {
+        guard let ctx = ctx else { return }
+        rdp_send_input_mouse(ctx, flags, x, y)
+    }
+    
     public func disconnect() {
         guard let ctx = ctx else { return }
         rdp_disconnect(ctx)

@@ -33,8 +33,11 @@ bool rdp_connect(CRDPContextRef ctx, const char *host, int port,
 // 3. Poll events (for the event loop)
 bool rdp_poll(CRDPContextRef ctx, int timeout_ms);
 
-// 4. Send input (mouse/keyboard, minimal for now)
-void rdp_send_input(CRDPContextRef ctx, int type, int code, int flags);
+// 4. Send input
+void rdp_send_input_keyboard(CRDPContextRef ctx, uint16_t flags,
+                             uint16_t scancode);
+void rdp_send_input_mouse(CRDPContextRef ctx, uint16_t flags, uint16_t x,
+                          uint16_t y);
 
 // 5. Disconnect
 void rdp_disconnect(CRDPContextRef ctx);

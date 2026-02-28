@@ -117,8 +117,27 @@ bool rdp_poll(CRDPContextRef ctx, int timeout_ms) {
   return true;
 }
 
-void rdp_send_input(CRDPContextRef ctx, int type, int code, int flags) {
-  // Scaffold for later
+void rdp_send_input_keyboard(CRDPContextRef ctx, uint16_t flags,
+                             uint16_t scancode) {
+  if (!ctx)
+    return;
+  CRDPContextImpl *impl = (CRDPContextImpl *)ctx;
+  freerdp *instance = impl->instance;
+  if (instance && instance->context && instance->context->input) {
+    freerdp_input_send_keyboard_event(instance->context->input, flags,
+                                      (UINT8)scancode);
+  }
+}
+
+void rdp_send_input_mouse(CRDPContextRef ctx, uint16_t flags, uint16_t x,
+                          uint16_t y) {
+  if (!ctx)
+    return;
+  CRDPContextImpl *impl = (CRDPContextImpl *)ctx;
+  freerdp *instance = impl->instance;
+  if (instance && instance->context && instance->context->input) {
+    freerdp_input_send_mouse_event(instance->context->input, flags, x, y);
+  }
 }
 
 void rdp_disconnect(CRDPContextRef ctx) {

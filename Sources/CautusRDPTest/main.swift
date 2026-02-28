@@ -1,42 +1,53 @@
-import Foundation
+import Cocoa
+import MetalKit
 import CautusRDP
 
-print("=== CautusRDP Swift Wrapper Test ===")
+class AppDelegate: NSObject, NSApplicationDelegate {
+    var window: NSWindow!
+    var rdpView: RDPMetalView!
+    var rdpContext: RDPContext!
 
-guard let rdp = RDPContext() else {
-    print("ERROR: Failed to create RDPContext")
-    exit(1)
+    func applicationDidFinishLaunching(_ aNotification: Notification) {
+        guard let ctx = RDPContext() else {
+            fatalError("Failed to init RDPContext")
+        }
+        self.rdpContext = ctx
+        
+        let connected = rdpContext.connect(host: "192.168.64.2", port: 3389, user: "iyaps", pass: "P@ssw0rd")
+        if !connected {
+            fatalError("Failed to connect")
+        }
+        print("Connected to 192.168.64.2. Opening window...")
+        
+        let device = MTLCreateSystemDefaultDevice()
+        rdpView = RDPMetalView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720), device: device)
+        rdpView.rdp = rdpContext
+
+        window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered, defer: false)
+        window.center()
+        window.title = "CautusRDP Spike Day 5"
+        window.contentView = rdpView
+        window.makeKeyAndOrderFront(nil)
+        
+        // Ensure app comes to foreground
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func applicationWillTerminate(_ aNotification: Notification) {
+        print("Disconnecting...")
+        rdpContext.disconnect()
+        rdpContext.destroy()
+    }
+    
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return true
+    }
 }
 
-print("Initiating connection to 192.168.64.2...")
-
-let connected = rdp.connect(host: "192.168.64.2", port: 3389, user: "iyaps", pass: "P@ssw0rd")
-
-if !connected {
-    print("ERROR: Connection failed")
-    exit(1)
-}
-
-print("CONNECTED! Running 10-second event loop...")
-
-let timeout = Date().addingTimeInterval(10)
-while Date() < timeout {
-    let _ = rdp.poll(timeoutMs: 100)
-}
-
-let stats = rdp.getStats()
-print("Event loop ended.")
-print("Stats: \(stats.width)x\(stats.height) desktop, \(stats.fps) frames processed")
-
-if let fb = rdp.getFramebuffer() {
-    print("Capturing framebuffer: \(fb.width)x\(fb.height), stride \(fb.stride)...")
-    let success = CautusRDPUtil.savePNG(buffer: fb.buffer, width: fb.width, height: fb.height, bpp: 32, path: "screenshot.png")
-    print("Screenshot saved to screenshot.png: \(success)")
-} else {
-    print("Failed to get framebuffer.")
-}
-
-print("Disconnecting...")
-rdp.disconnect()
-print("Clean shutdown complete.")
-exit(0)
+let app = NSApplication.shared
+let delegate = AppDelegate()
+app.delegate = delegate
+app.run()

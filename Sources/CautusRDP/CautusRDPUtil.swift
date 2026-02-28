@@ -9,7 +9,6 @@ public struct CautusRDPUtil {
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
         let bytesPerRow = width * (bpp / 8)
-        let totalBytes = bytesPerRow * height
         
         guard let context = CGContext(data: buffer,
                                       width: width,
