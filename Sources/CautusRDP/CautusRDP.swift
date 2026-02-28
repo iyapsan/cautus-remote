@@ -50,4 +50,18 @@ public class RDPContext {
         guard let ctx = ctx else { return CRDPStats() }
         return rdp_get_stats(ctx)
     }
+    
+    public func getFramebuffer() -> (buffer: UnsafeMutablePointer<UInt8>, width: Int, height: Int, stride: Int)? {
+        guard let ctx = ctx else { return nil }
+        var bufferPtr: UnsafeMutableRawPointer? = nil
+        var width: Int32 = 0
+        var height: Int32 = 0
+        var stride: Int32 = 0
+        
+        let success = rdp_get_framebuffer(ctx, &bufferPtr, &width, &height, &stride)
+        guard success, let ptr = bufferPtr else { return nil }
+        
+        let typedPtr = ptr.bindMemory(to: UInt8.self, capacity: Int(stride * height))
+        return (buffer: typedPtr, width: Int(width), height: Int(height), stride: Int(stride))
+    }
 }

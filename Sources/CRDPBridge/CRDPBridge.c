@@ -147,3 +147,22 @@ CRDPStats rdp_get_stats(CRDPContextRef ctx) {
   CRDPContextImpl *impl = (CRDPContextImpl *)ctx;
   return impl->stats;
 }
+
+bool rdp_get_framebuffer(CRDPContextRef ctx, void **buffer, int *width,
+                         int *height, int *stride) {
+  if (!ctx || !buffer || !width || !height || !stride)
+    return false;
+  CRDPContextImpl *impl = (CRDPContextImpl *)ctx;
+  freerdp *instance = impl->instance;
+
+  if (!instance || !instance->context || !instance->context->gdi)
+    return false;
+
+  rdpGdi *gdi = instance->context->gdi;
+  *buffer = gdi->primary_buffer;
+  *width = gdi->width;
+  *height = gdi->height;
+  *stride = gdi->stride;
+
+  return (*buffer != NULL);
+}

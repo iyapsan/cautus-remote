@@ -28,6 +28,14 @@ let stats = rdp.getStats()
 print("Event loop ended.")
 print("Stats: \(stats.width)x\(stats.height) desktop, \(stats.fps) frames processed")
 
+if let fb = rdp.getFramebuffer() {
+    print("Capturing framebuffer: \(fb.width)x\(fb.height), stride \(fb.stride)...")
+    let success = CautusRDPUtil.savePNG(buffer: fb.buffer, width: fb.width, height: fb.height, bpp: 32, path: "screenshot.png")
+    print("Screenshot saved to screenshot.png: \(success)")
+} else {
+    print("Failed to get framebuffer.")
+}
+
 print("Disconnecting...")
 rdp.disconnect()
 print("Clean shutdown complete.")
