@@ -4,6 +4,10 @@
 Package.resolved
 *.xcodeproj/
 *.xcworkspace/
+
+# FreeRDP build output
+out/
+tools/rdp_test/rdp_test
 xcuserdata/
 DerivedData/
 
