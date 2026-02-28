@@ -151,12 +151,13 @@ void rdp_destroy(CRDPContextRef ctx) {
   if (!ctx)
     return;
   CRDPContextImpl *impl = (CRDPContextImpl *)ctx;
-  if (impl->instance) {
-    gdi_free(impl->instance);
-    freerdp_context_free(impl->instance);
-    freerdp_free(impl->instance);
+  freerdp *instance = impl->instance; // Cache before `impl` is freed
+  if (instance) {
+    gdi_free(instance);
+    freerdp_context_free(instance); // This internally frees `instance->context`
+                                    // (which is `impl`)
+    freerdp_free(instance);
   }
-  free(impl);
 }
 
 CRDPStats rdp_get_stats(CRDPContextRef ctx) {

@@ -31,6 +31,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.title = "CautusRDP Spike Day 5"
         window.contentView = rdpView
         window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(rdpView) // CRITICAL: Receive keystrokes
+        
+        rdpView.startRDPThread() // Start background FreeRDP polling
         
         // Ensure app comes to foreground
         NSApp.activate(ignoringOtherApps: true)
@@ -38,6 +41,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ aNotification: Notification) {
         print("Disconnecting...")
+        rdpView.stopRDPThread()
         rdpContext.disconnect()
         rdpContext.destroy()
     }
@@ -48,6 +52,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 let app = NSApplication.shared
+app.setActivationPolicy(.regular)
 let delegate = AppDelegate()
 app.delegate = delegate
 app.run()
