@@ -17,7 +17,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if !connected {
             fatalError("Failed to connect")
         }
-        print("Connected to 192.168.64.2. Opening window...")
+        print("Final connection established to 192.168.64.2. Opening window...")
         
         let device = MTLCreateSystemDefaultDevice()
         rdpView = RDPMetalView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720), device: device)
