@@ -11,8 +11,6 @@ public class RDPContext: @unchecked Sendable {
     // Clipboard callbacks
     /// Called on the RDP thread when Windows sends text to the Mac.
     public var onClipboardTextReceived: ((String) -> Void)?
-    /// Called on the RDP thread when Windows requests Mac clipboard text. Return the string to send, or nil.
-    public var onClipboardDataRequest: (() -> String?)?
 
     // Registry for C-Callback Context Bridging
     private static let registryLock = NSLock()
@@ -51,17 +49,6 @@ public class RDPContext: @unchecked Sendable {
                 guard let rdp = rdpCtx, let cb = rdp.onClipboardTextReceived else { return }
                 let text = String(bytes: UnsafeBufferPointer(start: UnsafePointer<UInt8>(bitPattern: UInt(bitPattern: utf8Ptr))!, count: Int(length)), encoding: .utf8) ?? ""
                 cb(text)
-            },
-            // data request FROM Windows (Mac must supply text)
-            { ctxRef -> UnsafeMutablePointer<CChar>? in
-                guard let ctxRef = ctxRef else { return nil }
-                RDPContext.registryLock.lock()
-                let rdpCtx = RDPContext.contextRegistry[Int(bitPattern: ctxRef)]
-                RDPContext.registryLock.unlock()
-                guard let rdp = rdpCtx, let cb = rdp.onClipboardDataRequest,
-                      let text = cb() else { return nil }
-                // Caller (C) is responsible for freeing this
-                return strdup(text)
             }
         )
     }
@@ -69,8 +56,12 @@ public class RDPContext: @unchecked Sendable {
     /// Push Mac clipboard text to Windows.
     public func sendClipboardText(_ text: String) {
         guard let ctx = ctx else { return }
-        text.withCString { ptr in
-            rdp_send_clipboard_text(ctx, ptr, text.utf8.count)
+        // cliprdr expects \r\n for line breaks, not just \n
+        let crlfText = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\n", with: "\r\n")
+        let cString = crlfText.cString(using: .utf8)
+        cString?.withUnsafeBufferPointer { ptr in
+            // cString includes the null terminator, so length is count - 1
+            rdp_send_clipboard_text(ctx, ptr.baseAddress, ptr.count > 0 ? ptr.count - 1 : 0)
         }
     }
     

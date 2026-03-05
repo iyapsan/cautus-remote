@@ -34,9 +34,6 @@ typedef bool (*CRDPVerifyX509Callback)(CRDPContextRef ctx, const char *hostname,
 typedef void (*CRDPClipboardTextReceivedCallback)(CRDPContextRef ctx,
                                                   const char *utf8_text,
                                                   size_t length);
-// Called when Windows requests Mac clipboard text; return the string (caller
-// frees via rdp_clipboard_response_free)
-typedef char *(*CRDPClipboardDataRequestCallback)(CRDPContextRef ctx);
 
 // 1. Create a context
 CRDPContextRef rdp_create(void);
@@ -65,8 +62,7 @@ void rdp_disconnect(CRDPContextRef ctx);
 void rdp_set_certificate_callbacks(CRDPContextRef ctx,
                                    CRDPVerifyX509Callback verify_cb);
 void rdp_set_clipboard_callbacks(CRDPContextRef ctx,
-                                 CRDPClipboardTextReceivedCallback received_cb,
-                                 CRDPClipboardDataRequestCallback request_cb);
+                                 CRDPClipboardTextReceivedCallback received_cb);
 
 // 5c. Push Mac clipboard text to Windows
 void rdp_send_clipboard_text(CRDPContextRef ctx, const char *utf8_text,

@@ -22,7 +22,6 @@ typedef struct {
   // Clipboard
   CliprdrClientContext *cliprdr;
   CRDPClipboardTextReceivedCallback clipboard_received_cb;
-  CRDPClipboardDataRequestCallback clipboard_request_cb;
   // Pending outgoing clipboard text (Mac → Windows)
   char *pending_clip_text; // UTF-8
   size_t pending_clip_len;
@@ -318,20 +317,15 @@ cliprdr_server_format_data_request(CliprdrClientContext *ctx,
     return CHANNEL_RC_OK;
   }
 
-  char *utf8_text = NULL;
-  if (impl->clipboard_request_cb) {
-    utf8_text = impl->clipboard_request_cb((CRDPContextRef)impl);
-  }
-
-  if (!utf8_text) {
+  if (!impl->pending_clip_text || impl->pending_clip_len == 0) {
     CLIPRDR_FORMAT_DATA_RESPONSE resp = {.common.msgFlags = CB_RESPONSE_FAIL};
     ctx->ClientFormatDataResponse(ctx, &resp);
     return CHANNEL_RC_OK;
   }
 
   size_t utf16_bytes = 0;
-  BYTE *utf16 = utf8_to_utf16le(utf8_text, strlen(utf8_text), &utf16_bytes);
-  free(utf8_text);
+  BYTE *utf16 = utf8_to_utf16le(impl->pending_clip_text, impl->pending_clip_len,
+                                &utf16_bytes);
 
   CLIPRDR_FORMAT_DATA_RESPONSE resp = {
       .common.msgFlags = CB_RESPONSE_OK,
@@ -555,14 +549,12 @@ void rdp_set_certificate_callbacks(CRDPContextRef ctx,
   impl->verify_x509_cb = verify_cb;
 }
 
-void rdp_set_clipboard_callbacks(CRDPContextRef ctx,
-                                 CRDPClipboardTextReceivedCallback received_cb,
-                                 CRDPClipboardDataRequestCallback request_cb) {
+void rdp_set_clipboard_callbacks(
+    CRDPContextRef ctx, CRDPClipboardTextReceivedCallback received_cb) {
   if (!ctx)
     return;
   CRDPContextImpl *impl = (CRDPContextImpl *)ctx;
   impl->clipboard_received_cb = received_cb;
-  impl->clipboard_request_cb = request_cb;
 }
 
 void rdp_send_clipboard_text(CRDPContextRef ctx, const char *utf8_text,

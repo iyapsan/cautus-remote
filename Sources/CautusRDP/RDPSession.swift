@@ -56,14 +56,6 @@ public final class RDPSession: ObservableObject, @unchecked Sendable {
                 print("[RDPSession] Clipboard: received \(text.count) chars from Windows")
             }
         }
-        
-        // Clipboard: Mac → Windows (read NSPasteboard on callback thread; it's safe to read from any thread)
-        ctx.onClipboardDataRequest = {
-            let text = NSPasteboard.general.string(forType: .string)
-            print("[RDPSession] Clipboard: supplying \(text?.count ?? 0) chars to Windows")
-            return text
-        }
-        
         print("[RDPSession] Connecting to \(self.config.host):\(self.config.port)...")
         let success = await Task.detached {
             return ctx.connect(

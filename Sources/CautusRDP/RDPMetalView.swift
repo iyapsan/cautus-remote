@@ -165,8 +165,32 @@ public class RDPMetalView: MTKView, MTKViewDelegate {
         var flags: UInt16 = isPressed ? 0x0000 : 0x8000 // 0x0000 is DOWN, 0x8000 is UP/RELEASE
         if isExt { flags |= 0x0100 }
         
+        if isPressed {
+            activeModifiers.insert(macCode)
+        } else {
+            activeModifiers.remove(macCode)
+        }
+        
         session?.sendKeyboardInput(flags: flags, scancode: scancode)
         print("flagsChanged: macKeyCode \(macCode) isPressed=\(isPressed) -> rdpScancode \(scancode)")
+    }
+    
+    public override func resignFirstResponder() -> Bool {
+        releaseAllModifiers()
+        return super.resignFirstResponder()
+    }
+    
+    private func releaseAllModifiers() {
+        for macCode in activeModifiers {
+            let (scancode, isExt) = mapMacKeyCodeToRDP(macCode)
+            if scancode > 0 {
+                var flags: UInt16 = 0x8000 // UP
+                if isExt { flags |= 0x0100 }
+                session?.sendKeyboardInput(flags: flags, scancode: scancode)
+                print("releaseAllModifiers: released stuck macKeyCode \(macCode)")
+            }
+        }
+        activeModifiers.removeAll()
     }
     
     private func mapMacKeyCodeToRDP(_ macCode: UInt16) -> (UInt16, Bool) {
