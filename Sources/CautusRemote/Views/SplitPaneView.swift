@@ -19,12 +19,16 @@ struct SplitPaneView: View {
     private func nodeView(for node: SplitNode) -> AnyView {
         switch node {
         case .terminal(let paneId, let sessionId):
-            return AnyView(
-                TerminalPaneView(
-                    sessionId: sessionId,
-                    isFocused: paneId == focusedPaneId
+            if let activeSession = appState.sessionManager.sessions[sessionId] {
+                return AnyView(
+                    RDPWorkspaceView(
+                        session: activeSession,
+                        isFocused: paneId == focusedPaneId
+                    )
                 )
-            )
+            } else {
+                return AnyView(Color.clear)
+            }
 
         case .split(_, let orientation, let children):
             let childViews = children.map { child in

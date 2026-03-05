@@ -61,10 +61,7 @@ struct MainWindowView: View {
         .sheet(isPresented: $appState.isShowingConnectionSheet, onDismiss: {
             try? appState.connectionService.loadAll()
         }) {
-            ConnectionFormView(
-                connection: appState.editingConnection,
-                initialFolderId: appState.selectedFolderIdForNewConnection
-            )
+            ConnectionSheetView()
         }
         .overlay(alignment: .top) {
             if appState.palette.isVisible {

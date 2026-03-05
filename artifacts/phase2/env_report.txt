@@ -1,0 +1,8 @@
+FreeRDP Version: 3.12.0
+Build Options:
+  * WITH_VERBOSE_WINPR_ASSERT=ON
+  * WITH_GATEWAY=ON
+  * WITH_NLA=ON
+  * OS: macos
+  * ARCH: arm64
+  * COMPILER: clang

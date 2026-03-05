@@ -1,8 +1,9 @@
 import Foundation
+import CautusRDP
 
 /// Manages active remote sessions.
 ///
-/// Coordinates between the SSH engine, Keychain, and workspace state.
+/// Coordinates between the RDP engine, Keychain, and workspace state.
 /// Publishes session state changes for UI consumption.
 ///
 /// `@MainActor` isolated to share the same domain as `AppState`
@@ -11,15 +12,15 @@ import Foundation
 @Observable
 final class SessionManager {
     /// Active sessions keyed by session ID
-    private(set) var sessions: [UUID: any RemoteSession] = [:]
+    private(set) var sessions: [UUID: RDPSession] = [:]
 
-    /// The protocol engine (SSH in v1)
-    private let engine: any RemoteProtocol
+    /// The protocol engine
+    private let engine: RDPClient
 
     /// Keychain for credential retrieval
     private let keychainService: KeychainService
 
-    init(engine: any RemoteProtocol, keychainService: KeychainService = KeychainService()) {
+    init(engine: RDPClient = RDPClient(), keychainService: KeychainService = KeychainService()) {
         self.engine = engine
         self.keychainService = keychainService
     }
@@ -31,45 +32,65 @@ final class SessionManager {
     /// - Parameter connection: The connection to open
     /// - Returns: The new session's UUID
     func open(connection: Connection) async throws -> UUID {
-        // Retrieve credential from Keychain
-        let credential: Credential
-        switch connection.authMethod {
-        case .password:
-            guard let password = try keychainService.retrievePassword(for: connection.id) else {
-                throw SessionError(code: .authFailed, message: "No password stored for this connection")
+        // Prevent launching duplicates if a session is already active or connecting.
+        // We reuse the connection.id as the session.id key in our architecture.
+        if let existingSession = sessions[connection.id] {
+            switch existingSession.state {
+            case .connected, .connecting, .reconnecting:
+                print("[SessionManager] Session for \(connection.id) already active/connecting. Deduplicating.")
+                return connection.id
+            case .idle, .disconnected:
+                // Safely proceed to spawn a new one
+                break
             }
-            credential = .password(password)
-        case .publicKey:
-            guard let keyPath = connection.sshKeyPath else {
-                throw SessionError(code: .keyNotFound, message: "No SSH key path configured")
-            }
-            let passphrase = try keychainService.retrievePassphrase(for: connection.id)
-            credential = .privateKey(path: keyPath, passphrase: passphrase)
         }
 
-        // Connect via the protocol engine
-        let session = try await engine.connect(to: connection, credential: credential)
-        sessions[session.id] = session
+        // Retrieve credential from Keychain
+        let password = try keychainService.retrievePassword(for: connection.id) ?? ""
+        print("[SessionManager] Connecting to \(connection.host) with user \(connection.username). Password length: \(password.count)")
 
-        return session.id
+        // Map data model into strictly isolated configuration
+        let config = RDPConfig(
+            host: connection.host,
+            port: connection.port,
+            user: connection.username,
+            pass: password,
+            gwHost: connection.gatewayUrl,
+            gwUser: connection.gatewayUsername,
+            gwPass: try? keychainService.retrievePassword(for: connection.id), // Simplified for now
+            gwDomain: nil, // Add to SwiftData model later if needed
+            gwMode: 0,
+            gwBypassLocal: true,
+            gwUseSameCreds: nil,
+            ignoreCert: connection.ignoreCertificateErrors
+        )
+
+        // Connect via the protocol engine
+        let session = try await engine.connect(config: config)
+        
+        // We use connection.id as the session key so 1 connection = 1 active session
+        sessions[connection.id] = session
+
+        return connection.id
     }
 
     /// Close a session by ID.
     func close(sessionId: UUID) async {
         guard let session = sessions[sessionId] else { return }
-        await session.close()
+        session.disconnect()
         sessions.removeValue(forKey: sessionId)
     }
 
     /// Reconnect a failed or disconnected session.
     func reconnect(sessionId: UUID) async throws {
         guard let session = sessions[sessionId] else { return }
-        try await session.reconnect()
+        session.disconnect()
+        try await session.connect()
     }
 
     /// Get current state for a session.
-    func state(for sessionId: UUID) -> SessionState {
-        sessions[sessionId]?.state ?? .disconnected
+    func state(for sessionId: UUID) -> RDPConnectionState {
+        sessions[sessionId]?.state ?? .disconnected(nil)
     }
 
     /// Close all sessions (app shutdown).

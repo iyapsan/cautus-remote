@@ -68,6 +68,7 @@ let package = Package(
         .executableTarget(
             name: "CautusRemote",
             dependencies: [
+                "CautusRDP",
                 .product(name: "NIOSSH", package: "swift-nio-ssh"),
                 .product(name: "SwiftTerm", package: "SwiftTerm"),
             ],

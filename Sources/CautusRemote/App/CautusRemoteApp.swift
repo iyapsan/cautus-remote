@@ -17,14 +17,27 @@ struct CautusRemoteApp: App {
         do {
             container = try ModelContainer(for: Connection.self, Folder.self, Tag.self)
         } catch {
-            fatalError("Failed to create ModelContainer: \(error)")
+            print("Failed to load ModelContainer: \(error). Wiping store and starting fresh...")
+            do {
+                let config = ModelConfiguration()
+                let url = config.url
+                let shmUrl = url.deletingPathExtension().appendingPathExtension("store-shm")
+                let walUrl = url.deletingPathExtension().appendingPathExtension("store-wal")
+                try? FileManager.default.removeItem(at: url)
+                try? FileManager.default.removeItem(at: shmUrl)
+                try? FileManager.default.removeItem(at: walUrl)
+                container = try ModelContainer(for: Connection.self, Folder.self, Tag.self)
+            } catch {
+                let errStr = "Failed to create ModelContainer after wipe: \(error)"
+                try? errStr.write(toFile: "/tmp/cautus_crash.log", atomically: true, encoding: .utf8)
+                fatalError(errStr)
+            }
         }
         self.modelContainer = container
 
         // Initialize services with real SwiftData repository
         let keychainService = KeychainService()
-        let sshEngine = SSHEngine()
-        let sessionManager = SessionManager(engine: sshEngine, keychainService: keychainService)
+        let sessionManager = SessionManager(keychainService: keychainService)
 
         let repository = SwiftDataRepository(modelContext: container.mainContext)
         let connectionService = ConnectionService(

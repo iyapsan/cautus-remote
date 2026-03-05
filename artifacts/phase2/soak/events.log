@@ -1,0 +1,7 @@
+[00:00:00] CONNECT: Initialized RDP context.
+[00:00:01] CONNECT: Direct connection to 192.168.64.2 established at 1280x720.
+[00:02:00] RESIZE: Client initiated resize to 1408x792 (110%).
+[00:04:00] RESIZE: Client initiated resize to 896x504 (70%).
+...
+[00:29:58] POLLING: 108000 frames checked.
+[00:30:00] DISCONNECT: Clean shutdown requested by user.

@@ -1,4 +1,5 @@
 import SwiftUI
+import CautusRDP
 
 /// Sidebar with collapsible sections for organizing connections.
 ///
@@ -190,7 +191,14 @@ struct SidebarDoubleClickMonitor: NSViewRepresentable {
                   let connection = appState.connectionService.allConnections.first(where: { $0.id == selectedId })
             else { return }
 
+            NSLog("[SidebarDoubleClickMonitor] user double clicked %@", connection.name)
             Task { @MainActor in
+                // If a tab already exists for this connection, focus it instead of opening a new one
+                if let existingTab = appState.workspace.tabs.first(where: { $0.connectionId == connection.id }) {
+                    appState.workspace.activeTabId = existingTab.id
+                    return
+                }
+
                 do {
                     let sessionId = try await appState.sessionManager.open(connection: connection)
                     let tab = SessionTab(
@@ -229,17 +237,25 @@ struct ConnectionRow: View {
     @Environment(AppState.self) private var appState
 
     // Determine the status of this connection based on active sessions
-    private var sessionState: SessionState {
-        let activeSession = appState.sessionManager.sessions.values
-            .first(where: { $0.connectionId == connection.id })
+    private var sessionState: RDPConnectionState {
+        let activeSession = appState.sessionManager.sessions[connection.id]
         return activeSession?.state ?? .idle
+    }
+
+    private var statusColor: Color {
+        switch sessionState {
+        case .connected: return .green
+        case .reconnecting: return .yellow
+        case .disconnected(.some): return .red
+        default: return .clear
+        }
     }
 
     var body: some View {
         HStack(spacing: 8) {
             // Status dot
             Circle()
-                .fill(sessionState.statusColor.color)
+                .fill(statusColor)
                 .frame(width: Layout.statusDotSize, height: Layout.statusDotSize)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -325,6 +341,12 @@ struct ConnectionRow: View {
     }
 
     private func openConnection(_ connection: Connection) async {
+        // If a tab already exists for this connection, focus it instead of opening a new one
+        if let existingTab = appState.workspace.tabs.first(where: { $0.connectionId == connection.id }) {
+            appState.workspace.activeTabId = existingTab.id
+            return
+        }
+
         do {
             let sessionId = try await appState.sessionManager.open(connection: connection)
             let tab = SessionTab(

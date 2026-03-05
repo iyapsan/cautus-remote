@@ -1,4 +1,5 @@
 import Foundation
+import CautusRDP
 
 /// State for the workspace content area — tabs and split panes.
 @Observable
@@ -31,6 +32,12 @@ final class WorkspaceState {
     // MARK: - Tab Operations
 
     func addTab(_ tab: SessionTab) {
+        // Deduplicate tabs by connectionId
+        if let existing = tabs.first(where: { $0.connectionId == tab.connectionId }) {
+            activeTabId = existing.id
+            return
+        }
+        
         tabs.append(tab)
         activeTabId = tab.id
     }
@@ -80,7 +87,7 @@ struct SessionTab: Identifiable, Sendable {
     let connectionId: UUID
     let sessionId: UUID
     var title: String
-    var state: SessionState
+    var state: RDPConnectionState
 
     init(connectionId: UUID, sessionId: UUID, title: String) {
         self.id = UUID()

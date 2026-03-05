@@ -1,0 +1,24 @@
+[14:48:28:851] [80094:05d8ec40] [INFO][com.freerdp.gdi] - [gdi_init_ex]: Local framebuffer format  PIXEL_FORMAT_BGRA32
+[14:48:28:851] [80094:05d8ec40] [INFO][com.freerdp.gdi] - [gdi_init_ex]: Remote framebuffer format PIXEL_FORMAT_BGRA32
+...
+[14:48:29:014] [80094:05d8ec40] [WARN][com.freerdp.core.gateway.rdg] - [http_response_log_error_status]: Unexpected HTTP status: HTTP_STATUS_DENIED [401]
+[14:48:29:418] [80094:05d8ec40] [WARN][com.freerdp.core.connection] - [rdp_client_connect_auto_detect]: expected messageChannelId=0, got 1003
+[14:48:29:418] [80094:05d8ec40] [WARN][com.freerdp.core.license] - [license_read_binary_blob_data]: license binary blob::type BB_ERROR_BLOB, length=0, skipping.
+[14:48:29:458] [80094:05d8ec40] [WARN][com.freerdp.core.connection] - [rdp_client_connect_auto_detect]: expected messageChannelId=0, got 1003
+
+=== CautusRDP Negotiated Config ===
+Target Host:      192.168.64.2:3389
+Target User:      iyaps
+Target Domain:    (none)
+
+-- Gateway Settings --
+Gateway Enabled:  YES
+Gateway Host:     192.168.64.3
+Gateway User:     Administrator
+Gateway Domain:   192.168.64.3
+Gateway Method:   2 (1=Direct, 2=RPC, 3=HTTP)
+Gateway Bypass L: NO
+===================================
+
+gateway=enabled host=192.168.64.2 mode=rpc-http
+Final connection established to 192.168.64.2. Opening window...

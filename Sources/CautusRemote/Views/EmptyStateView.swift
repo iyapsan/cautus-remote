@@ -21,7 +21,7 @@ struct EmptyStateView: View {
                         .font(.system(size: 22, weight: .semibold))
                         .foregroundStyle(.primary)
 
-                    Text("SSH Connection Manager")
+                    Text("RDP Connection Manager")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                 }
@@ -31,7 +31,7 @@ struct EmptyStateView: View {
             VStack(spacing: 12) {
                 EmptyStateButton(
                     title: "New Connection",
-                    subtitle: "Add an SSH server",
+                    subtitle: "Add an RDP server",
                     icon: "plus.circle.fill",
                     shortcut: "⌘N"
                 ) {

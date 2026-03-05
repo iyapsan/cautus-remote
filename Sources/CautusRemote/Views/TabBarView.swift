@@ -1,4 +1,5 @@
 import SwiftUI
+import CautusRDP
 
 /// Session tab bar — displays active connection tabs with status indicators.
 ///
@@ -34,15 +35,24 @@ struct TabItemView: View {
         appState.workspace.activeTabId == tab.id
     }
 
-    private var sessionState: SessionState {
+    private var sessionState: RDPConnectionState {
         appState.sessionManager.state(for: tab.sessionId)
+    }
+
+    private var statusColor: Color {
+        switch sessionState {
+        case .connected: return .green
+        case .reconnecting: return .yellow
+        case .disconnected(.some): return .red
+        default: return .clear
+        }
     }
 
     var body: some View {
         HStack(spacing: 6) {
             // Status dot
             Circle()
-                .fill(sessionState.statusColor.color)
+                .fill(statusColor)
                 .frame(width: 6, height: 6)
 
             Text(tab.title)

@@ -1,11 +1,23 @@
 import Cocoa
 import MetalKit
 
+public final class PollingState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _isRunning = false
+    public var isRunning: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return _isRunning }
+        set { lock.lock(); defer { lock.unlock() }; _isRunning = newValue }
+    }
+    public init() {}
+}
+
 public class RDPMetalView: MTKView, MTKViewDelegate {
-    public var rdp: RDPContext?
+    public weak var session: RDPSession?
     private var commandQueue: MTLCommandQueue?
     
-    private var isPolling = false
+    // SOAK: Metrics reporting
+    public let metrics = FrameMetrics()
+    public var csvLogger: CSVLogger?
     
     public override init(frame: CGRect, device: MTLDevice?) {
         super.init(frame: frame, device: device)
@@ -15,6 +27,7 @@ public class RDPMetalView: MTKView, MTKViewDelegate {
         self.framebufferOnly = false
         self.autoResizeDrawable = false
         self.drawableSize = CGSize(width: 1280, height: 720)
+        self.layerContentsPlacement = .scaleProportionallyToFit
         self.delegate = self
         self.preferredFramesPerSecond = 60
     }
@@ -23,45 +36,34 @@ public class RDPMetalView: MTKView, MTKViewDelegate {
         fatalError("init(coder:) has not been implemented")
     }
     
-    public func startRDPThread() {
-        guard !isPolling else { return }
-        isPolling = true
-        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
-            while self?.isPolling == true {
-                // Poll continuously with a small timeout (e.g. 5ms) to process all network packets
-                let _ = self?.rdp?.poll(timeoutMs: 5)
-            }
-        }
-    }
-    
-    public func stopRDPThread() {
-        isPolling = false
-    }
+
     
     public override var acceptsFirstResponder: Bool { return true }
     
     public func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
     
     public func draw(in view: MTKView) {
-        guard let rdp = rdp else { return }
-        
-        guard let fb = rdp.getFramebuffer(), let drawable = view.currentDrawable else {
-            return
-        }
-        
-        // Ensure we don't copy out of bounds
-        let copyWidth = min(fb.width, drawable.texture.width)
-        let copyHeight = min(fb.height, drawable.texture.height)
-        
-        if copyWidth > 0 && copyHeight > 0 {
-            let region = MTLRegionMake2D(0, 0, copyWidth, copyHeight)
-            // Use replace(region...) to upload bits to the GPU without a shader
-            drawable.texture.replace(region: region, mipmapLevel: 0, withBytes: fb.buffer, bytesPerRow: fb.stride)
+        guard let drawable = view.currentDrawable else { return }
+        let session = self.session
+
+        if let commandBuffer = commandQueue?.makeCommandBuffer() {
+            // If we have a framebuffer, we'll write the texture over it
+            if let fb = session?.getFramebuffer() {
+                    let copyWidth = min(fb.width, drawable.texture.width)
+                    let copyHeight = min(fb.height, drawable.texture.height)
+                    
+                    if copyWidth > 0 && copyHeight > 0 {
+                        let region = MTLRegionMake2D(0, 0, copyWidth, copyHeight)
+                        metrics.uploadStart()
+                        drawable.texture.replace(region: region, mipmapLevel: 0, withBytes: fb.buffer, bytesPerRow: fb.stride)
+                        metrics.uploadEnd()
+                        metrics.markFrame()
+                    }
+                }
+                
             
-            if let commandBuffer = commandQueue?.makeCommandBuffer() {
-                commandBuffer.present(drawable)
-                commandBuffer.commit()
-            }
+            commandBuffer.present(drawable)
+            commandBuffer.commit()
         }
     }
     
@@ -69,24 +71,61 @@ public class RDPMetalView: MTKView, MTKViewDelegate {
     
     private var activeModifiers = Set<UInt16>()
     
-    private func sendMouse(event: NSEvent, isDown: Bool) {
+    private func rdpCoordinates(from event: NSEvent) -> (x: UInt16, y: UInt16) {
         let loc = convert(event.locationInWindow, from: nil)
-        let x = UInt16(min(max(0, loc.x), bounds.width))
-        let y = UInt16(min(max(0, bounds.height - loc.y), bounds.height))
-        
-        var flags: UInt16 = isDown ? 0x8000 : 0x0000
-        flags |= 0x1000 // PTR_FLAGS_BUTTON1
-        
-        rdp?.sendMouseInput(flags: flags, x: x, y: y)
+        let rdpW: CGFloat = drawableSize.width   // 1280
+        let rdpH: CGFloat = drawableSize.height  // 720
+        let viewW = bounds.width
+        let viewH = bounds.height
+
+        // layerContentsPlacement = .scaleProportionallyToFit means the content is
+        // letterboxed/pillarboxed (aspect-ratio preserving) and centered in the view.
+        let scale = min(viewW / rdpW, viewH / rdpH)
+        let displayW = rdpW * scale
+        let displayH = rdpH * scale
+        let marginX = (viewW - displayW) / 2   // left/right blank margin
+        let marginY = (viewH - displayH) / 2   // top/bottom blank margin (in AppKit flipped coords: bottom offset)
+
+        // AppKit y=0 is at bottom; flip to top-down, then subtract margin
+        let flippedY = viewH - loc.y
+        let contentX = loc.x - marginX
+        let contentY = flippedY - marginY
+
+        let rdpX = contentX / scale
+        let rdpY = contentY / scale
+
+        let x = UInt16(max(0, min(rdpX, rdpW - 1)))
+        let y = UInt16(max(0, min(rdpY, rdpH - 1)))
+        return (x, y)
     }
-    
-    public override func mouseDown(with event: NSEvent) { sendMouse(event: event, isDown: true) }
-    public override func mouseUp(with event: NSEvent) { sendMouse(event: event, isDown: false) }
+
+    private func sendMouse(event: NSEvent, isDown: Bool, button: UInt16 = 0x1000) {
+        let (x, y) = rdpCoordinates(from: event)
+        var flags: UInt16 = isDown ? 0x8000 : 0x0000
+        flags |= button
+        session?.sendMouseInput(flags: flags, x: x, y: y)
+    }
+
+    public override func mouseDown(with event: NSEvent)      { sendMouse(event: event, isDown: true) }
+    public override func mouseUp(with event: NSEvent)        { sendMouse(event: event, isDown: false) }
+    public override func rightMouseDown(with event: NSEvent) { sendMouse(event: event, isDown: true, button: 0x2000) }
+    public override func rightMouseUp(with event: NSEvent)   { sendMouse(event: event, isDown: false, button: 0x2000) }
+
     public override func mouseDragged(with event: NSEvent) {
-        let loc = convert(event.locationInWindow, from: nil)
-        let x = UInt16(min(max(0, loc.x), bounds.width))
-        let y = UInt16(min(max(0, bounds.height - loc.y), bounds.height))
-        rdp?.sendMouseInput(flags: 0x0800, x: x, y: y) // PTR_FLAGS_MOVE
+        let (x, y) = rdpCoordinates(from: event)
+        session?.sendMouseInput(flags: 0x0800, x: x, y: y) // PTR_FLAGS_MOVE
+    }
+
+    public override func scrollWheel(with event: NSEvent) {
+        let (x, y) = rdpCoordinates(from: event)
+        if event.scrollingDeltaY != 0 {
+            // PTR_FLAGS_WHEEL = 0x0200, positive delta = scroll up (0x0078 +), negative = down (subtract from 0x0200)
+            let delta = Int16(max(-127, min(127, Int(event.scrollingDeltaY * 3))))
+            let wheelFlags: UInt16 = delta >= 0
+                ? (0x0200 | UInt16(delta))
+                : (0x0200 | 0x0100 | UInt16(-delta))   // PTR_FLAGS_WHEEL_NEGATIVE = 0x0100
+            session?.sendMouseInput(flags: wheelFlags, x: x, y: y)
+        }
     }
     
     public override func keyDown(with event: NSEvent) {
@@ -94,7 +133,7 @@ public class RDPMetalView: MTKView, MTKViewDelegate {
         if scancode > 0 {
             var flags: UInt16 = event.isARepeat ? 0x4000 : 0x0000 // 0x4000 = Repeat, 0x0000 = Initial Down
             if isExt { flags |= 0x0100 } // KBD_FLAGS_EXTENDED
-            rdp?.sendKeyboardInput(flags: flags, scancode: scancode)
+            session?.sendKeyboardInput(flags: flags, scancode: scancode)
         }
     }
     
@@ -103,7 +142,7 @@ public class RDPMetalView: MTKView, MTKViewDelegate {
         if scancode > 0 {
             var flags: UInt16 = 0x8000 // KBD_FLAGS_RELEASE
             if isExt { flags |= 0x0100 }
-            rdp?.sendKeyboardInput(flags: flags, scancode: scancode)
+            session?.sendKeyboardInput(flags: flags, scancode: scancode)
         }
     }
     
@@ -126,7 +165,7 @@ public class RDPMetalView: MTKView, MTKViewDelegate {
         var flags: UInt16 = isPressed ? 0x0000 : 0x8000 // 0x0000 is DOWN, 0x8000 is UP/RELEASE
         if isExt { flags |= 0x0100 }
         
-        rdp?.sendKeyboardInput(flags: flags, scancode: scancode)
+        session?.sendKeyboardInput(flags: flags, scancode: scancode)
         print("flagsChanged: macKeyCode \(macCode) isPressed=\(isPressed) -> rdpScancode \(scancode)")
     }
     

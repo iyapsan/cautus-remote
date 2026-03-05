@@ -11,12 +11,14 @@ struct WorkspaceView: View {
     var body: some View {
         ZStack {
             ForEach(appState.workspace.tabs) { tab in
-                TerminalPaneView(
-                    sessionId: tab.sessionId,
-                    isFocused: appState.workspace.activeTabId == tab.id
-                )
-                .opacity(appState.workspace.activeTabId == tab.id ? 1 : 0)
-                .allowsHitTesting(appState.workspace.activeTabId == tab.id)
+                if let activeSession = appState.sessionManager.sessions[tab.sessionId] {
+                    RDPWorkspaceView(
+                        session: activeSession,
+                        isFocused: appState.workspace.activeTabId == tab.id
+                    )
+                    .opacity(appState.workspace.activeTabId == tab.id ? 1 : 0)
+                    .allowsHitTesting(appState.workspace.activeTabId == tab.id)
+                }
             }
         }
     }

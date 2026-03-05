@@ -118,6 +118,12 @@ final class CommandDispatcher {
     // MARK: - Private
 
     private func openConnection(id: UUID) async {
+        // If a tab already exists for this connection, focus it instead of opening a new one
+        if let existingTab = appState.workspace.tabs.first(where: { $0.connectionId == id }) {
+            appState.workspace.activeTabId = existingTab.id
+            return
+        }
+
         do {
             guard let connection = try appState.connectionService.search(query: "")
                 .first(where: { $0.id == id }) else { return }

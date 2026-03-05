@@ -33,6 +33,12 @@ final class Connection {
     @Relationship(inverse: \Tag.connections)
     var tags: [Tag]
 
+    // MARK: - Advanced RDP Settings
+
+    var gatewayUrl: String?
+    var gatewayUsername: String?
+    var ignoreCertificateErrors: Bool
+
     // MARK: - Advanced Settings
 
     /// Keepalive interval in seconds (default 60)
@@ -85,11 +91,14 @@ final class Connection {
     init(
         name: String,
         host: String,
-        port: Int = 22,
+        port: Int = 3389,
         username: String,
         authMethod: AuthMethod = .password,
         sshKeyPath: String? = nil,
-        jumpHostId: UUID? = nil
+        jumpHostId: UUID? = nil,
+        gatewayUrl: String? = nil,
+        gatewayUsername: String? = nil,
+        ignoreCertificateErrors: Bool = false
     ) {
         self.id = UUID()
         self.name = name
@@ -106,5 +115,8 @@ final class Connection {
         self.scrollbackLines = 10000
         self.createdAt = .now
         self.updatedAt = .now
+        self.gatewayUrl = gatewayUrl
+        self.gatewayUsername = gatewayUsername
+        self.ignoreCertificateErrors = ignoreCertificateErrors
     }
 }
