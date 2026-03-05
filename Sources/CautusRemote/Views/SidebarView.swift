@@ -375,6 +375,7 @@ struct FolderRow: View {
     let folder: Folder
 
     @Environment(AppState.self) private var appState
+    @State private var folderForRDPDefaults: Folder? = nil
 
     var body: some View {
         // Access dataVersion to register observation dependency — when loadAll()
@@ -398,6 +399,12 @@ struct FolderRow: View {
                     .foregroundStyle(.secondary)
             }
             .contextMenu {
+                Button {
+                    folderForRDPDefaults = folder
+                } label: {
+                    Label("Edit RDP Defaults…", systemImage: "slider.horizontal.3")
+                }
+                Divider()
                 Button {
                     appState.folderActionTarget = folder
                     appState.folderAlertText = folder.name
@@ -429,6 +436,9 @@ struct FolderRow: View {
                 }
             }
             return !idsToMove.isEmpty
+        }
+        .sheet(item: $folderForRDPDefaults) { targetFolder in
+            FolderDefaultsSheetView(folder: targetFolder)
         }
     }
 }

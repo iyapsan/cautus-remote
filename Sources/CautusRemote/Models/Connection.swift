@@ -56,6 +56,18 @@ final class Connection {
     /// Environment variables to set on the remote session
     var environmentVarsData: Data?
 
+    // MARK: - RDP Profile Overrides (stored as JSON blob to avoid SwiftData migrations)
+
+    /// Raw JSON blob. Decode only at connect time via `rdpOverrides`.
+    var rdpOverridesData: Data?
+
+    /// Connection-level RDP overrides. All fields are optional; nil = inherit from folder chain.
+    /// JSON decoded here — call only at connect time, not in list rendering hot paths.
+    var rdpOverrides: RDPOverrides {
+        get { rdpOverridesData.flatMap { try? JSONDecoder().decode(RDPOverrides.self, from: $0) } ?? RDPOverrides() }
+        set { rdpOverridesData = try? JSONEncoder().encode(newValue) }
+    }
+
     // MARK: - Timestamps
 
     var lastConnectedAt: Date?
@@ -84,6 +96,24 @@ final class Connection {
     /// Display string for the connection (user@host:port)
     var displayAddress: String {
         port == 22 ? "\(username)@\(host)" : "\(username)@\(host):\(port)"
+    }
+
+    // MARK: - Effective RDP Configuration
+
+    /// Build the folder chain from leaf to root, then reverse (root-first).
+    /// Cycle-guarded: stop if a folder id is seen twice.
+    private func buildFolderChain() -> [Folder] {
+        return CautusRemote.buildFolderChain(from: folder)
+    }
+
+    /// Resolve the effective RDP configuration for this connection.
+    ///
+    /// - Parameter global: App-wide baseline defaults.
+    ///   Pass `AppSettings.rdpDefaults` in production; use `.global` in tests / early v1.
+    /// - Note: Decodes JSON blobs internally. Call only at connect time — NOT during list rendering.
+    func effectiveRDPConfig(global: RDPProfileDefaults = .global) -> RDPProfileDefaults {
+        let chain = buildFolderChain()
+        return resolveRDPConfig(connection: self, folderChain: chain, global: global)
     }
 
     // MARK: - Init

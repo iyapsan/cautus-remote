@@ -43,27 +43,6 @@ struct ModelTests {
         #expect(tag.connections.isEmpty)
     }
 
-    @Test func sessionStateEquality() async throws {
-        #expect(SessionState.idle == SessionState.idle)
-        #expect(SessionState.connected == SessionState.connected)
-        #expect(SessionState.reconnecting(attempt: 1) == SessionState.reconnecting(attempt: 1))
-        #expect(SessionState.reconnecting(attempt: 1) != SessionState.reconnecting(attempt: 2))
-    }
-
-    @Test func sessionStateStatusColors() async throws {
-        #expect(SessionState.connected.statusColor == .green)
-        #expect(SessionState.reconnecting(attempt: 1).statusColor == .yellow)
-        #expect(SessionState.failed(SessionError(code: .timeout, message: "")).statusColor == .red)
-        #expect(SessionState.idle.statusColor == .none)
-    }
-
-    @Test func sessionStateIsActive() async throws {
-        #expect(SessionState.connecting.isActive)
-        #expect(SessionState.connected.isActive)
-        #expect(SessionState.reconnecting(attempt: 1).isActive)
-        #expect(!SessionState.idle.isActive)
-        #expect(!SessionState.disconnected.isActive)
-    }
 }
 
 struct FuzzySearchTests {

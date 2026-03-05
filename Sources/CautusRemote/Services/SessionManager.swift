@@ -49,18 +49,24 @@ final class SessionManager {
         let password = try keychainService.retrievePassword(for: connection.id) ?? ""
         print("[SessionManager] Connecting to \(connection.host) with user \(connection.username). Password length: \(password.count)")
 
+        // Resolve effective settings: Global → Folder chain → Connection overrides.
+        // effectiveRDPConfig() decodes JSON blobs — fine here (connect time, not hot list path).
+        // TODO: Replace .global with AppSettings.shared.rdpDefaults once Settings panel exists.
+        let eff = connection.effectiveRDPConfig(global: .global)
+        print("[SessionManager] effectiveConfig: \(eff)")
+
         // Map data model into strictly isolated configuration
         let config = RDPConfig(
             host: connection.host,
-            port: connection.port,
+            port: eff.port,
             user: connection.username,
             pass: password,
             gwHost: connection.gatewayUrl,
             gwUser: connection.gatewayUsername,
-            gwPass: try? keychainService.retrievePassword(for: connection.id), // Simplified for now
-            gwDomain: nil, // Add to SwiftData model later if needed
-            gwMode: 0,
-            gwBypassLocal: true,
+            gwPass: try? keychainService.retrievePassword(for: connection.id),
+            gwDomain: nil,
+            gwMode: eff.gatewayMode.rawValue,
+            gwBypassLocal: eff.gatewayBypassLocal,
             gwUseSameCreds: nil,
             ignoreCert: connection.ignoreCertificateErrors
         )

@@ -23,6 +23,18 @@ final class Folder {
 
     var createdAt: Date
 
+    // MARK: - RDP Profile Defaults (stored as JSON blob to avoid SwiftData migrations)
+
+    /// Raw JSON blob. Use `rdpDefaults` accessor — decode only at connect time or in settings sheets.
+    var rdpDefaultsData: Data?
+
+    /// Decoded RDP defaults for this folder.
+    /// `nil` means "inherit from parent". Only decode when actually needed (not in list cells).
+    var rdpDefaults: RDPProfileDefaults? {
+        get { rdpDefaultsData.flatMap { try? JSONDecoder().decode(RDPProfileDefaults.self, from: $0) } }
+        set { rdpDefaultsData = newValue.flatMap { try? JSONEncoder().encode($0) } }
+    }
+
     // MARK: - Computed
 
     /// Whether this is a root-level folder
