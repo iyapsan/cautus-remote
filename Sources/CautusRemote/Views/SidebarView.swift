@@ -245,7 +245,7 @@ struct ConnectionRow: View {
     private var statusColor: Color {
         switch sessionState {
         case .connected: return .green
-        case .reconnecting: return .yellow
+        case .reconnecting(_, _): return .yellow
         case .disconnected(.some): return .red
         default: return .clear
         }

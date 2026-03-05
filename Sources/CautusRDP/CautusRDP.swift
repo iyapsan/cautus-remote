@@ -177,6 +177,11 @@ public class RDPContext: @unchecked Sendable {
         return (buffer: typedPtr, width: Int(width), height: Int(height), stride: Int(stride))
     }
     
+    public func markFramePresented() {
+        guard let ctx = ctx else { return }
+        rdp_mark_frame_presented(ctx)
+    }
+    
     public func printConfig() {
         guard let ctx = ctx else { return }
         rdp_print_config(ctx)

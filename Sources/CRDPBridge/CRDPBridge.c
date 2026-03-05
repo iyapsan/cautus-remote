@@ -12,6 +12,7 @@
 #include <winpr/clipboard.h>
 #include <winpr/collections.h>
 #include <winpr/synch.h>
+#include <winpr/sysinfo.h>
 #include <winpr/wlog.h>
 
 typedef struct {
@@ -26,6 +27,10 @@ typedef struct {
   char *pending_clip_text; // UTF-8
   size_t pending_clip_len;
   BOOL pending_clip_ready; // TRUE once Windows asked for data
+
+  // Watchdog
+  uint64_t lastFrameTickMs;
+  uint32_t frameCounter;
 } CRDPContextImpl;
 
 // Forward declarations for cliprdr callbacks (defined later in this file)
@@ -95,7 +100,7 @@ static BOOL custom_load_channels(freerdp *instance) {
                                            cliprdr_VirtualChannelEntryEx, NULL);
   fprintf(stderr, "[CRDPBridge] custom_load_channels: cliprdr load rc=%d\n",
           rc);
-  return TRUE;
+  return (rc == 0);
 }
 
 static BOOL cb_pre_connect(freerdp *instance) {
@@ -124,6 +129,8 @@ static BOOL cb_post_connect(freerdp *instance) {
   impl->stats.height =
       freerdp_settings_get_uint32(settings, FreeRDP_DesktopHeight);
   impl->stats.state = 1; // Connected
+  impl->lastFrameTickMs = GetTickCount64();
+  impl->frameCounter = 0;
   // Note: cliprdr context is set up via PubSub ChannelConnected event (see
   // on_channel_connected)
   return TRUE;
@@ -437,6 +444,12 @@ bool rdp_connect(CRDPContextRef ctx, const char *host, int port,
   freerdp_settings_set_bool(settings, FreeRDP_AutoReconnectionEnabled, TRUE);
   freerdp_settings_set_uint32(settings, FreeRDP_AutoReconnectMaxRetries, 20);
 
+  // Aggressive KeepAlive to detect dropped/paused VMs quickly
+  freerdp_settings_set_bool(settings, FreeRDP_TcpKeepAlive, TRUE);
+  freerdp_settings_set_uint32(settings, FreeRDP_TcpKeepAliveRetries, 3);
+  freerdp_settings_set_uint32(settings, FreeRDP_TcpKeepAliveDelay, 10000);
+  freerdp_settings_set_uint32(settings, FreeRDP_TcpKeepAliveInterval, 5000);
+
   freerdp_settings_set_uint32(settings, FreeRDP_DesktopWidth, 1280);
   freerdp_settings_set_uint32(settings, FreeRDP_DesktopHeight, 720);
 
@@ -445,7 +458,6 @@ bool rdp_connect(CRDPContextRef ctx, const char *host, int port,
 
   const char *cliprdr_args[] = {"cliprdr"};
   freerdp_client_add_static_channel(settings, 1, cliprdr_args);
-  freerdp_client_add_dynamic_channel(settings, 1, cliprdr_args);
 
   // Override LoadChannels with our custom loader for static symbols
   instance->LoadChannels = custom_load_channels;
@@ -478,11 +490,26 @@ bool rdp_poll(CRDPContextRef ctx, int timeout_ms) {
     return false;
   }
 
+  // If a handle was signaled (i.e., we received actual network data)
+  if (status >= WAIT_OBJECT_0 && status < WAIT_OBJECT_0 + nCount) {
+    rdp_mark_frame_presented(ctx);
+  }
+
   if (!freerdp_check_event_handles(instance->context)) {
     fprintf(stderr,
             "[CRDPBridge] freerdp_check_event_handles failed! error=0x%08x\n",
             freerdp_get_last_error(instance->context));
     return false;
+  }
+
+  if (impl->stats.state > 0) {
+    if ((GetTickCount64() - impl->lastFrameTickMs) > 10000) {
+      fprintf(stderr, "[CRDPBridge] Frame watchdog timed out (10s elapsed with "
+                      "no frames). Force disconnecting.\n");
+      freerdp_abort_connect(instance);
+      freerdp_disconnect(instance);
+      return false;
+    }
   }
 
   if (!freerdp_channels_check_fds(instance->context->channels, instance)) {
@@ -639,13 +666,17 @@ bool rdp_get_framebuffer(CRDPContextRef ctx, void **buffer, int *width,
 // ----------------------------------------------------
 
 void rdp_print_env_report(void) {
-#include <freerdp/version.h>
-  printf("\n=== CautusRDP Environment Report ===\n");
-  printf("FreeRDP Version: %s\n", FREERDP_VERSION_FULL);
-  printf("FreeRDP API Version: %s\n", FREERDP_API_VERSION);
-  printf(
-      "Gateway Support (Compile Time): YES (via direct settings injection)\n");
-  printf("====================================\n\n");
+  fprintf(stderr, "=== CRDPBridge Native Environment Report ===\n");
+  fprintf(stderr, "FreeRDP Version: %s\n", freerdp_get_version_string());
+  fprintf(stderr, "============================================\n");
+}
+
+void rdp_mark_frame_presented(CRDPContextRef ctx) {
+  if (!ctx)
+    return;
+  CRDPContextImpl *impl = (CRDPContextImpl *)ctx;
+  impl->lastFrameTickMs = GetTickCount64();
+  impl->frameCounter++;
 }
 
 void rdp_print_config(CRDPContextRef ctx) {

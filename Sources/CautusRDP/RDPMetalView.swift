@@ -57,6 +57,7 @@ public class RDPMetalView: MTKView, MTKViewDelegate {
                         metrics.uploadStart()
                         drawable.texture.replace(region: region, mipmapLevel: 0, withBytes: fb.buffer, bytesPerRow: fb.stride)
                         metrics.uploadEnd()
+                        metrics.uploadEnd()
                         metrics.markFrame()
                     }
                 }

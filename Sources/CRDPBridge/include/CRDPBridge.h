@@ -78,6 +78,9 @@ CRDPStats rdp_get_stats(CRDPContextRef ctx);
 bool rdp_get_framebuffer(CRDPContextRef ctx, void **buffer, int *width,
                          int *height, int *stride);
 
+// 8b. Notify that a frame was presented to the UI (for watchdog)
+void rdp_mark_frame_presented(CRDPContextRef ctx);
+
 // 9. Debugging and Validation
 void rdp_print_config(CRDPContextRef ctx);
 void rdp_print_env_report(void);

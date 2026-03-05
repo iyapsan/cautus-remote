@@ -36,7 +36,7 @@ final class SessionManager {
         // We reuse the connection.id as the session.id key in our architecture.
         if let existingSession = sessions[connection.id] {
             switch existingSession.state {
-            case .connected, .connecting, .reconnecting:
+            case .connected, .connecting, .reconnecting(_, _):
                 print("[SessionManager] Session for \(connection.id) already active/connecting. Deduplicating.")
                 return connection.id
             case .idle, .disconnected:
