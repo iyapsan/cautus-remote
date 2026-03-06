@@ -67,10 +67,11 @@ struct ConnectionSheetView: View {
 
     // MARK: - Breadcrumb
 
+    @ViewBuilder
     private var profileBreadcrumb: some View {
-        Section {
-            let crumb = buildBreadcrumb()
-            if !crumb.isEmpty {
+        let crumb = buildBreadcrumb()
+        if !crumb.isEmpty {
+            Section {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Effective Profile")
                         .font(.caption2).fontWeight(.semibold)
@@ -83,9 +84,9 @@ struct ConnectionSheetView: View {
                     }
                 }
             }
+            .listRowBackground(Color.clear)
+            .listRowInsets(.init(top: 6, leading: 16, bottom: 4, trailing: 16))
         }
-        .listRowBackground(Color.clear)
-        .listRowInsets(.init(top: 6, leading: 16, bottom: 4, trailing: 16))
     }
 
     // MARK: - Overrides Summary
