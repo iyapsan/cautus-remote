@@ -56,16 +56,27 @@ final class Connection {
     /// Environment variables to set on the remote session
     var environmentVarsData: Data?
 
-    // MARK: - RDP Profile Overrides (stored as JSON blob to avoid SwiftData migrations)
+    // MARK: - RDP Patch (stored as JSON blob; decode only at connect time or in editors)
 
-    /// Raw JSON blob. Decode only at connect time via `rdpOverrides`.
-    var rdpOverridesData: Data?
+    /// Raw JSON blob for this connection's RDP patch.
+    /// Renamed from `rdpOverridesData` per the formal spec.
+    /// `nil` here semantically means "no overrides at all" — distinct from an empty patch.
+    var rdpPatchData: Data?
 
-    /// Connection-level RDP overrides. All fields are optional; nil = inherit from folder chain.
-    /// JSON decoded here — call only at connect time, not in list rendering hot paths.
-    var rdpOverrides: RDPOverrides {
-        get { rdpOverridesData.flatMap { try? JSONDecoder().decode(RDPOverrides.self, from: $0) } ?? RDPOverrides() }
-        set { rdpOverridesData = try? JSONEncoder().encode(newValue) }
+    /// Connection-level RDP patch. All fields optional — nil fields inherit from the folder chain.
+    /// Persistence stores nil when no overrides exist (not an empty struct).
+    /// The UI convenience getter returns `RDPPatch()` so callers don’t need to unwrap.
+    var rdpPatch: RDPPatch? {
+        get { rdpPatchData.flatMap { try? JSONDecoder().decode(RDPPatch.self, from: $0) } }
+        set {
+            // Store nil when patch is empty — preserves semantic distinction between
+            // "no overrides" (nil) and "explicit empty override object".
+            if let patch = newValue, !patch.isEmpty {
+                rdpPatchData = try? JSONEncoder().encode(patch)
+            } else {
+                rdpPatchData = nil
+            }
+        }
     }
 
     // MARK: - Timestamps
@@ -100,20 +111,20 @@ final class Connection {
 
     // MARK: - Effective RDP Configuration
 
-    /// Build the folder chain from leaf to root, then reverse (root-first).
-    /// Cycle-guarded: stop if a folder id is seen twice.
-    private func buildFolderChain() -> [Folder] {
-        return CautusRemote.buildFolderChain(from: folder)
-    }
-
     /// Resolve the effective RDP configuration for this connection.
     ///
-    /// - Parameter global: App-wide baseline defaults.
-    ///   Pass `AppSettings.rdpDefaults` in production; use `.global` in tests / early v1.
-    /// - Note: Decodes JSON blobs internally. Call only at connect time — NOT during list rendering.
-    func effectiveRDPConfig(global: RDPProfileDefaults = .global) -> RDPProfileDefaults {
-        let chain = buildFolderChain()
-        return resolveRDPConfig(connection: self, folderChain: chain, global: global)
+    /// Uses the canonical `buildFolderChain(for:)` helper — NOT a local duplicate.
+    /// Decodes JSON blobs internally. Call only at connect time — NOT during list rendering.
+    ///
+    /// - Parameter global: App-wide baseline. Use `AppSettings.rdpDefaults` in production;
+    ///   `.global` in tests / early v1.
+    func effectiveRDPConfig(global: RDPResolvedConfig = .global) -> RDPResolvedConfig {
+        let chain = buildFolderChain(for: folder)
+        return resolveRDPConfig(
+            global: global,
+            folderChain: chain,
+            connectionPatch: rdpPatch
+        )
     }
 
     // MARK: - Init

@@ -2,169 +2,138 @@ import Testing
 import Foundation
 @testable import CautusRemote
 
-// MARK: - Helpers for testing the pure resolution algorithm
+// MARK: - Test Helpers
 
-/// Build a folder "chain" manually for tests without SwiftData (no ModelContext needed).
-/// Returns the chain root-first, the way `buildFolderChain` would.
-private func folderChain(_ defauts: [RDPProfileDefaults?]) -> [_TestFolder] {
-    defauts.map { _TestFolder(rdpDefaults: $0) }
-}
-
-/// Lightweight test-only folder stub (no SwiftData dependency).
-private struct _TestFolder {
-    let rdpDefaults: RDPProfileDefaults?
-}
-
-/// Overload of the resolver that works with test stubs.
+/// Lightweight test resolver using `RDPResolvedConfig.applying(:)` directly —
+/// the same logic production uses, without needing SwiftData Folder objects.
 private func resolve(
-    overrides: RDPOverrides = RDPOverrides(),
-    folderDefaults: [RDPProfileDefaults?] = [],
-    global: RDPProfileDefaults = .global
-) -> RDPProfileDefaults {
-    // Run the same merge logic as the production resolver
+    global: RDPResolvedConfig = .global,
+    folderPatches: [RDPPatch?] = [],
+    connectionPatch: RDPPatch? = nil
+) -> RDPResolvedConfig {
     var result = global
-    for d in folderDefaults {
-        if let d { result = d }
+    for patch in folderPatches {
+        if let patch { result = result.applying(patch) }
     }
-    // Apply overrides
-    if let v = overrides.port                 { result.port = v }
-    if let v = overrides.colorDepth           { result.colorDepth = v }
-    if let v = overrides.enableClipboard      { result.enableClipboard = v }
-    if let v = overrides.enableNLA            { result.enableNLA = v }
-    if let v = overrides.gatewayMode          { result.gatewayMode = v }
-    if let v = overrides.gatewayBypassLocal   { result.gatewayBypassLocal = v }
-    if let v = overrides.reconnectMaxAttempts { result.reconnectMaxAttempts = v }
-    if let v = overrides.scaling              { result.scaling = v }
-    if let v = overrides.dynamicResolution    { result.dynamicResolution = v }
+    if let patch = connectionPatch { result = result.applying(patch) }
     return result.validated()
 }
 
 // MARK: - Tests
 
-/// Tests for the RDP Profile Inheritance resolution algorithm.
 struct ProfileResolutionTests {
 
-    // ✅ No defaults anywhere → falls back to .global
-    @Test func noDefaultsAnywhere_usesGlobal() {
+    // ✅ No patches anywhere → falls back to .global
+    @Test func noPatches_usesGlobal() {
         let eff = resolve()
-        #expect(eff == RDPProfileDefaults.global.validated())
+        #expect(eff == RDPResolvedConfig.global.validated())
         #expect(eff.port == 3389)
-        #expect(eff.enableClipboard == true)
-        #expect(eff.enableNLA == true)
-        #expect(eff.reconnectMaxAttempts == 5)
+        #expect(eff.clipboardEnabled == true)
+        #expect(eff.nlaRequired == true)
+        #expect(eff.reconnectAttempts == 5)
     }
 
-    // ✅ Single folder default overrides global for the fields it sets
-    @Test func singleFolderDefault_overridesGlobal() {
-        var folderDef = RDPProfileDefaults()
-        folderDef.port = 3390
-        folderDef.enableClipboard = false
-
-        let eff = resolve(folderDefaults: [folderDef])
-        #expect(eff.port == 3390)                 // overridden
-        #expect(eff.enableClipboard == false)     // overridden
-        #expect(eff.enableNLA == true)            // still from global
+    // ✅ Single folder patch overrides only the fields it sets; others stay global
+    @Test func singleFolderPatch_overridesOnlySetFields() {
+        let folderPatch = RDPPatch(port: 3390, clipboardEnabled: false)
+        let eff = resolve(folderPatches: [folderPatch])
+        #expect(eff.port == 3390)              // patched by folder
+        #expect(eff.clipboardEnabled == false) // patched by folder
+        #expect(eff.nlaRequired == true)       // unchanged — stays global
+        #expect(eff.scaling == .fit)           // unchanged — stays global
     }
 
-    // ✅ Nested folder (child) only overrides subset of fields
-    @Test func nestedFolders_childWins() {
-        var rootDef = RDPProfileDefaults()
-        rootDef.port = 3390
-        rootDef.enableNLA = false
-
-        var childDef = RDPProfileDefaults()
-        childDef.port = 3391               // child overrides port further
-        // NLA not set in child — so child's value (inherited from its full struct) takes precedence
-
-        // Root-first order: [root, child]
-        let eff = resolve(folderDefaults: [rootDef, childDef])
+    // ✅ Child folder patch overrides parent patch for ONE field only
+    @Test func childFolderPatch_overridesParentForOneFieldOnly() {
+        let parentPatch = RDPPatch(port: 3390, nlaRequired: false)
+        let childPatch = RDPPatch(port: 3391)  // only port; no NLA override
+        // Root-first order: [parentPatch, childPatch]
+        let eff = resolve(folderPatches: [parentPatch, childPatch])
         #expect(eff.port == 3391)          // child wins on port
-        // Note: in the "full defaults" merge strategy, the full childDef struct applies
-        // so childDef.enableNLA = true (its default), overriding rootDef.enableNLA = false
-        #expect(eff.enableNLA == true)
+        #expect(eff.nlaRequired == false)  // parent patch still applied (child didn't set NLA)
     }
 
-    // ✅ Connection overrides win over folder chain
-    @Test func connectionOverrides_winOverFolderChain() {
-        var folderDef = RDPProfileDefaults()
-        folderDef.port = 3390
-        folderDef.enableClipboard = false
-
-        let overrides = RDPOverrides(
-            port: 9999,
-            enableClipboard: true  // connection re-enables clipboard
-        )
-
-        let eff = resolve(overrides: overrides, folderDefaults: [folderDef])
-        #expect(eff.port == 9999)             // connection override wins
-        #expect(eff.enableClipboard == true)  // connection override wins
+    // ✅ Connection patch wins over folder chain
+    @Test func connectionPatch_winsOverFolderChain() {
+        let folderPatch = RDPPatch(port: 3390, clipboardEnabled: false)
+        let connPatch = RDPPatch(port: 9999, clipboardEnabled: true)
+        let eff = resolve(folderPatches: [folderPatch], connectionPatch: connPatch)
+        #expect(eff.port == 9999)             // connection wins
+        #expect(eff.clipboardEnabled == true) // connection wins
     }
 
-    // ✅ nil override field does not clobber folder chain value
-    @Test func nilOverrideField_doesNotClobber() {
-        var folderDef = RDPProfileDefaults()
-        folderDef.enableClipboard = false
-
-        let overrides = RDPOverrides(
-            port: 3399,
-            enableClipboard: nil  // explicitly left as inherit
-        )
-
-        let eff = resolve(overrides: overrides, folderDefaults: [folderDef])
-        #expect(eff.port == 3399)             // overridden by connection
-        #expect(eff.enableClipboard == false) // inherited from folder, not clobbered
+    // ✅ nil fields in connection patch do NOT clobber folder chain values
+    @Test func nilPatchFields_doNotClobberParent() {
+        let folderPatch = RDPPatch(clipboardEnabled: false)
+        let connPatch = RDPPatch(port: 3399, clipboardEnabled: nil) // explicitly nil (inherit)
+        let eff = resolve(folderPatches: [folderPatch], connectionPatch: connPatch)
+        #expect(eff.port == 3399)              // set by connection
+        #expect(eff.clipboardEnabled == false) // inherited from folder, not clobbered
     }
 
-    // ✅ validated() clamps values — port 0 → 1
-    @Test func validation_clampsPort() {
-        var d = RDPProfileDefaults()
-        d.port = 0
-        let validated = d.validated()
-        #expect(validated.port == 1)
+    // ✅ Empty (nil) connection patch leaves resolved config unchanged
+    @Test func nilConnectionPatch_leavesResolutionUnchanged() {
+        let folderPatch = RDPPatch(port: 3390)
+        let withNil = resolve(folderPatches: [folderPatch], connectionPatch: nil)
+        let withEmpty = resolve(folderPatches: [folderPatch], connectionPatch: RDPPatch())
+        // Both should produce identical results — nil patch == empty patch
+        #expect(withNil == withEmpty)
+        #expect(withNil.port == 3390)
     }
 
-    // ✅ validated() clamps reconnectMaxAttempts — -1 → 0
-    @Test func validation_clampsReconnects() {
-        var d = RDPProfileDefaults()
-        d.reconnectMaxAttempts = -1
-        let validated = d.validated()
-        #expect(validated.reconnectMaxAttempts == 0)
+    // ✅ validated() clamps port 0 → 1
+    @Test func validation_clampsPortLow() {
+        var cfg = RDPResolvedConfig()
+        cfg.port = 0
+        #expect(cfg.validated().port == 1)
     }
 
-    // ✅ validated() clamps reconnectMaxAttempts over 20 → 20
-    @Test func validation_clampsReconnectsUpper() {
-        var d = RDPProfileDefaults()
-        d.reconnectMaxAttempts = 999
-        let validated = d.validated()
-        #expect(validated.reconnectMaxAttempts == 20)
+    // ✅ validated() clamps port 99999 → 65535
+    @Test func validation_clampsPortHigh() {
+        var cfg = RDPResolvedConfig()
+        cfg.port = 99999
+        #expect(cfg.validated().port == 65535)
     }
 
-    // ✅ diff(from:) returns only changed fields
+    // ✅ validated() clamps reconnectAttempts -1 → 0
+    @Test func validation_clampsReconnectsLow() {
+        var cfg = RDPResolvedConfig()
+        cfg.reconnectAttempts = -1
+        #expect(cfg.validated().reconnectAttempts == 0)
+    }
+
+    // ✅ validated() clamps reconnectAttempts 999 → 20
+    @Test func validation_clampsReconnectsHigh() {
+        var cfg = RDPResolvedConfig()
+        cfg.reconnectAttempts = 999
+        #expect(cfg.validated().reconnectAttempts == 20)
+    }
+
+    // ✅ diff(from:) returns only changed fields (on resolved configs, not patches)
     @Test func diff_showsOnlyChangedFields() {
-        var a = RDPProfileDefaults()
+        var a = RDPResolvedConfig()
         a.port = 3390
-        a.enableClipboard = false
-        let b = RDPProfileDefaults() // defaults
-
+        a.clipboardEnabled = false
+        let b = RDPResolvedConfig() // unchanged global
         let diffs = a.diff(from: b)
         let keys = diffs.map { $0.key }
         #expect(keys.contains("Port"))
-        #expect(keys.contains("Clipboard"))
+        #expect(keys.contains("Clipboard Sharing"))
         #expect(!keys.contains("NLA"))
         #expect(!keys.contains("Scaling"))
     }
 
-    // ✅ RDPOverrides.isEmpty
-    @Test func overrides_isEmpty() {
-        #expect(RDPOverrides().isEmpty == true)
-        #expect(RDPOverrides(port: 3390).isEmpty == false)
+    // ✅ RDPPatch.isEmpty
+    @Test func patch_isEmpty() {
+        #expect(RDPPatch().isEmpty == true)
+        #expect(RDPPatch(port: 3390).isEmpty == false)
     }
 
-    // ✅ buildFolderChain is cycle-safe (smoke test via non-recursive chain)
-    @Test func folderChainBuilder_stopAtRoot() {
+    // ✅ buildFolderChain(for:) returns root-first order, cycle-safe
+    @Test func folderChainBuilder_rootFirstOrder() {
         let root = Folder(name: "Root")
         let child = Folder(name: "Child", parent: root)
-        let chain = buildFolderChain(from: child)
+        let chain = buildFolderChain(for: child)
         #expect(chain.count == 2)
         #expect(chain.first?.name == "Root")
         #expect(chain.last?.name == "Child")

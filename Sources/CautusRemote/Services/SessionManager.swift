@@ -49,11 +49,12 @@ final class SessionManager {
         let password = try keychainService.retrievePassword(for: connection.id) ?? ""
         print("[SessionManager] Connecting to \(connection.host) with user \(connection.username). Password length: \(password.count)")
 
-        // Resolve effective settings: Global → Folder chain → Connection overrides.
+        // Resolve effective settings via RDPResolvedConfig inheritance pipeline:
+        // Global (RDPResolvedConfig) → Folder patches (RDPPatch) → Connection patch (RDPPatch)
         // effectiveRDPConfig() decodes JSON blobs — fine here (connect time, not hot list path).
         // TODO: Replace .global with AppSettings.shared.rdpDefaults once Settings panel exists.
         let eff = connection.effectiveRDPConfig(global: .global)
-        print("[SessionManager] effectiveConfig: \(eff)")
+        print("[SessionManager] \(eff)")
 
         // Map data model into strictly isolated configuration
         let config = RDPConfig(

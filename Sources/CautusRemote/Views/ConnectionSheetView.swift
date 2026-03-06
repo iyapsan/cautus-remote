@@ -3,14 +3,15 @@ import SwiftData
 
 /// Sheet modal for creating or editing a Connection.
 ///
-/// UX design: Always show effective values. Source badges explain inheritance.
+/// UX: Always shows effective (resolved) values. Source badges explain inheritance.
 /// Override button activates per-field editing. Reset clears the override.
+/// State is typed against `RDPPatch` — only non-nil fields are persisted.
 struct ConnectionSheetView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
 
-    // MARK: - Always connection-specific (no inheritance)
+    // Always connection-specific (no inheritance)
     @State private var name: String = ""
     @State private var host: String = ""
     @State private var username: String = ""
@@ -23,52 +24,33 @@ struct ConnectionSheetView: View {
     @State private var gatewayUsername: String = ""
     @State private var useSameCredentials: Bool = false
 
-    // MARK: - RDP Overrides (the only data that interacts with inheritance)
-    @State private var overrides: RDPOverrides = RDPOverrides()
+    // RDP Patch — only non-nil fields are persisted; nil = inherit
+    @State private var patch: RDPPatch = RDPPatch()
 
-    // MARK: - Computed once on appear (folder chain baseline, no connection overrides)
-    @State private var inherited: RDPProfileDefaults = .global
-    @State private var inheritedSourceName: String = "Global"
-
-    @State private var isSaving: Bool = false
+    // Baseline: what the folder chain resolves to without this connection's patch
+    @State private var inherited: RDPResolvedConfig = .global
     @State private var hasAnyOverrides: Bool = false
 
     var body: some View {
         NavigationStack {
             Form {
-                // ── Header: Effective profile breadcrumb ──
                 profileBreadcrumb
-
-                // ── Active overrides summary (only if any overrides exist) ──
                 if hasAnyOverrides { activeOverridesSummary }
-
-                // ── Section 1: Connection ──
                 connectionSection
-
-                // ── Section 2: Display ──
                 displaySection
-
-                // ── Section 3: Security ──
                 securitySection
-
-                // ── Section 4: Gateway ──
                 gatewaySection
-
-                // ── Section 5: Clipboard ──
                 clipboardSection
+                connectionBehaviorSection
             }
             .formStyle(.grouped)
             .navigationTitle(appState.editingConnection != nil ? "Edit Connection" : "New Connection")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .automatic) {
                     if hasAnyOverrides {
-                        Button("Reset All Overrides") {
-                            withAnimation { overrides = RDPOverrides() }
-                        }
-                        .foregroundStyle(.orange)
+                        Button("Reset All Overrides") { withAnimation { patch = RDPPatch() } }
+                            .foregroundStyle(.orange)
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -76,11 +58,9 @@ struct ConnectionSheetView: View {
                         .disabled(name.isEmpty || host.isEmpty || username.isEmpty)
                 }
             }
-            .frame(width: 490, height: 650)
+            .frame(width: 490, height: 660)
             .onAppear { loadExistingValues() }
-            .onChange(of: overrides) { _, _ in
-                hasAnyOverrides = !overrides.isEmpty
-            }
+            .onChange(of: patch) { _, _ in hasAnyOverrides = !patch.isEmpty }
         }
     }
 
@@ -88,28 +68,54 @@ struct ConnectionSheetView: View {
 
     private var profileBreadcrumb: some View {
         Section {
-            let breadcrumb = buildBreadcrumb()
-            if !breadcrumb.isEmpty {
+            let crumb = buildBreadcrumb()
+            if !crumb.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Effective Profile")
-                        .font(.caption2)
-                        .fontWeight(.semibold)
+                        .font(.caption2).fontWeight(.semibold)
                         .foregroundStyle(.tertiary)
-                        .textCase(.uppercase)
-                        .tracking(0.5)
+                        .textCase(.uppercase).tracking(0.5)
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.triangle.branch")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Text(breadcrumb)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.caption2).foregroundStyle(.secondary)
+                        Text(crumb).font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
         }
         .listRowBackground(Color.clear)
         .listRowInsets(.init(top: 6, leading: 16, bottom: 4, trailing: 16))
+    }
+
+    // MARK: - Overrides Summary
+
+    private var activeOverridesSummary: some View {
+        Section {
+            HStack(alignment: .top, spacing: 10) {
+                Circle().fill(Color.orange).frame(width: 8, height: 8).padding(.top, 4)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Overrides Active (\(activeFieldNames.count))")
+                        .font(.caption).fontWeight(.semibold).foregroundStyle(.orange)
+                    Text(activeFieldNames.joined(separator: " · "))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .listRowBackground(Color.orange.opacity(0.06))
+    }
+
+    private var activeFieldNames: [String] {
+        var n: [String] = []
+        if patch.port != nil               { n.append("Port") }
+        if patch.colorDepth != nil         { n.append("Color Depth") }
+        if patch.clipboardEnabled != nil   { n.append("Clipboard Sharing") }
+        if patch.nlaRequired != nil        { n.append("NLA") }
+        if patch.gatewayMode != nil        { n.append("Gateway Mode") }
+        if patch.gatewayBypassLocal != nil { n.append("Bypass Local") }
+        if patch.reconnectAttempts != nil  { n.append("Reconnect Attempts") }
+        if patch.scaling != nil            { n.append("Scaling") }
+        if patch.dynamicResolution != nil  { n.append("Auto Resize Display") }
+        return n
     }
 
     // MARK: - Section 1: Connection
@@ -121,21 +127,19 @@ struct ConnectionSheetView: View {
             TextField("Username", text: $username)
             SecureField("Password", text: $rawPasswordInput)
 
-            // Port — overridable; use String binding to avoid comma formatting (e.g. 3,389)
-            OverridableRow(
-                "Port",
-                effectiveDisplay: "\(effectivePort)",
-                source: overrides.port != nil ? .connection : inheritedSource,
-                isOverridden: overrides.port != nil,
+            // Port — String binding avoids comma formatting (3389, not 3,389)
+            OverridableRow("Port",
+                effectiveDisplay: "\(effective.port)",
+                source: patch.port != nil ? .connection : inheritedSource,
+                isOverridden: patch.port != nil,
                 editor: {
                     TextField("", text: Binding(
-                        get: { "\(overrides.port ?? inherited.port)" },
-                        set: { overrides.port = Int($0) }
-                    ))
-                    .frame(width: 70)
+                        get: { "\(patch.port ?? inherited.port)" },
+                        set: { patch.port = Int($0) }
+                    )).frame(width: 70)
                 },
-                onOverride: { overrides.port = inherited.port },
-                onReset: { overrides.port = nil }
+                onOverride: { patch.port = inherited.port },
+                onReset: { patch.port = nil }
             )
         }
     }
@@ -144,62 +148,50 @@ struct ConnectionSheetView: View {
 
     private var displaySection: some View {
         Section("Display") {
-            OverridableRow(
-                "Scaling",
+            OverridableRow("Scaling",
                 effectiveDisplay: effective.scaling.displayName,
-                source: overrides.scaling != nil ? .connection : inheritedSource,
-                isOverridden: overrides.scaling != nil,
+                source: patch.scaling != nil ? .connection : inheritedSource,
+                isOverridden: patch.scaling != nil,
                 editor: {
                     Picker("", selection: Binding(
-                        get: { overrides.scaling ?? inherited.scaling },
-                        set: { overrides.scaling = $0 }
+                        get: { patch.scaling ?? inherited.scaling },
+                        set: { patch.scaling = $0 }
                     )) {
-                        ForEach(RDPScalingMode.allCases, id: \.self) { m in
-                            Text(m.displayName).tag(m)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 140)
+                        ForEach(RDPScalingMode.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                    }.labelsHidden().frame(width: 140)
                 },
-                onOverride: { overrides.scaling = inherited.scaling },
-                onReset: { overrides.scaling = nil }
+                onOverride: { patch.scaling = inherited.scaling },
+                onReset: { patch.scaling = nil }
             )
 
-            OverridableRow(
-                "Auto Resize Display",
+            OverridableRow("Auto Resize Display",
                 effectiveDisplay: effective.dynamicResolution ? "Enabled" : "Disabled",
-                source: overrides.dynamicResolution != nil ? .connection : inheritedSource,
-                isOverridden: overrides.dynamicResolution != nil,
+                source: patch.dynamicResolution != nil ? .connection : inheritedSource,
+                isOverridden: patch.dynamicResolution != nil,
                 editor: {
                     Toggle("", isOn: Binding(
-                        get: { overrides.dynamicResolution ?? inherited.dynamicResolution },
-                        set: { overrides.dynamicResolution = $0 }
-                    ))
-                    .labelsHidden()
+                        get: { patch.dynamicResolution ?? inherited.dynamicResolution },
+                        set: { patch.dynamicResolution = $0 }
+                    )).labelsHidden()
                 },
-                onOverride: { overrides.dynamicResolution = inherited.dynamicResolution },
-                onReset: { overrides.dynamicResolution = nil }
+                onOverride: { patch.dynamicResolution = inherited.dynamicResolution },
+                onReset: { patch.dynamicResolution = nil }
             )
 
-            OverridableRow(
-                "Color Depth",
+            OverridableRow("Color Depth",
                 effectiveDisplay: effective.colorDepth.displayName,
-                source: overrides.colorDepth != nil ? .connection : inheritedSource,
-                isOverridden: overrides.colorDepth != nil,
+                source: patch.colorDepth != nil ? .connection : inheritedSource,
+                isOverridden: patch.colorDepth != nil,
                 editor: {
                     Picker("", selection: Binding(
-                        get: { overrides.colorDepth ?? inherited.colorDepth },
-                        set: { overrides.colorDepth = $0 }
+                        get: { patch.colorDepth ?? inherited.colorDepth },
+                        set: { patch.colorDepth = $0 }
                     )) {
-                        ForEach(RDPColorDepth.allCases, id: \.self) { d in
-                            Text(d.displayName).tag(d)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 190)
+                        ForEach(RDPColorDepth.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                    }.labelsHidden().frame(width: 190)
                 },
-                onOverride: { overrides.colorDepth = inherited.colorDepth },
-                onReset: { overrides.colorDepth = nil }
+                onOverride: { patch.colorDepth = inherited.colorDepth },
+                onReset: { patch.colorDepth = nil }
             )
         }
     }
@@ -208,20 +200,18 @@ struct ConnectionSheetView: View {
 
     private var securitySection: some View {
         Section("Security") {
-            OverridableRow(
-                "Require NLA",
-                effectiveDisplay: effective.enableNLA ? "Required" : "Not required",
-                source: overrides.enableNLA != nil ? .connection : inheritedSource,
-                isOverridden: overrides.enableNLA != nil,
+            OverridableRow("Require NLA",
+                effectiveDisplay: effective.nlaRequired ? "Required" : "Not required",
+                source: patch.nlaRequired != nil ? .connection : inheritedSource,
+                isOverridden: patch.nlaRequired != nil,
                 editor: {
                     Toggle("", isOn: Binding(
-                        get: { overrides.enableNLA ?? inherited.enableNLA },
-                        set: { overrides.enableNLA = $0 }
-                    ))
-                    .labelsHidden()
+                        get: { patch.nlaRequired ?? inherited.nlaRequired },
+                        set: { patch.nlaRequired = $0 }
+                    )).labelsHidden()
                 },
-                onOverride: { overrides.enableNLA = inherited.enableNLA },
-                onReset: { overrides.enableNLA = nil }
+                onOverride: { patch.nlaRequired = inherited.nlaRequired },
+                onReset: { patch.nlaRequired = nil }
             )
 
             Group {
@@ -229,8 +219,7 @@ struct ConnectionSheetView: View {
                     .foregroundStyle(ignoreCertificateErrors ? .red : .primary)
                 if ignoreCertificateErrors {
                     Text("⚠️ Not recommended for production environments")
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                        .font(.caption).foregroundStyle(.red)
                 }
             }
         }
@@ -241,45 +230,37 @@ struct ConnectionSheetView: View {
     private var gatewaySection: some View {
         Section("Gateway") {
             Toggle("Use RD Gateway", isOn: $useGateway.animation())
-
             if useGateway {
                 TextField("Gateway Host", text: $gatewayUrl)
 
-                OverridableRow(
-                    "Gateway Mode",
+                OverridableRow("Gateway Mode",
                     effectiveDisplay: effective.gatewayMode.displayName,
-                    source: overrides.gatewayMode != nil ? .connection : inheritedSource,
-                    isOverridden: overrides.gatewayMode != nil,
+                    source: patch.gatewayMode != nil ? .connection : inheritedSource,
+                    isOverridden: patch.gatewayMode != nil,
                     editor: {
                         Picker("", selection: Binding(
-                            get: { overrides.gatewayMode ?? inherited.gatewayMode },
-                            set: { overrides.gatewayMode = $0 }
+                            get: { patch.gatewayMode ?? inherited.gatewayMode },
+                            set: { patch.gatewayMode = $0 }
                         )) {
-                            ForEach(GatewayMode.allCases, id: \.self) { m in
-                                Text(m.displayName).tag(m)
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(width: 100)
+                            ForEach(GatewayMode.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                        }.labelsHidden().frame(width: 100)
                     },
-                    onOverride: { overrides.gatewayMode = inherited.gatewayMode },
-                    onReset: { overrides.gatewayMode = nil }
+                    onOverride: { patch.gatewayMode = inherited.gatewayMode },
+                    onReset: { patch.gatewayMode = nil }
                 )
 
-                OverridableRow(
-                    "Bypass Local Addresses",
+                OverridableRow("Bypass Local Addresses",
                     effectiveDisplay: effective.gatewayBypassLocal ? "On" : "Off",
-                    source: overrides.gatewayBypassLocal != nil ? .connection : inheritedSource,
-                    isOverridden: overrides.gatewayBypassLocal != nil,
+                    source: patch.gatewayBypassLocal != nil ? .connection : inheritedSource,
+                    isOverridden: patch.gatewayBypassLocal != nil,
                     editor: {
                         Toggle("", isOn: Binding(
-                            get: { overrides.gatewayBypassLocal ?? inherited.gatewayBypassLocal },
-                            set: { overrides.gatewayBypassLocal = $0 }
-                        ))
-                        .labelsHidden()
+                            get: { patch.gatewayBypassLocal ?? inherited.gatewayBypassLocal },
+                            set: { patch.gatewayBypassLocal = $0 }
+                        )).labelsHidden()
                     },
-                    onOverride: { overrides.gatewayBypassLocal = inherited.gatewayBypassLocal },
-                    onReset: { overrides.gatewayBypassLocal = nil }
+                    onOverride: { patch.gatewayBypassLocal = inherited.gatewayBypassLocal },
+                    onReset: { patch.gatewayBypassLocal = nil }
                 )
 
                 Toggle("Use same credentials as target", isOn: $useSameCredentials.animation())
@@ -294,83 +275,49 @@ struct ConnectionSheetView: View {
 
     private var clipboardSection: some View {
         Section("Clipboard") {
-            OverridableRow(
-                "Clipboard Sharing",
-                effectiveDisplay: effective.enableClipboard ? "Enabled" : "Disabled",
-                source: overrides.enableClipboard != nil ? .connection : inheritedSource,
-                isOverridden: overrides.enableClipboard != nil,
+            OverridableRow("Clipboard Sharing",
+                effectiveDisplay: effective.clipboardEnabled ? "Enabled" : "Disabled",
+                source: patch.clipboardEnabled != nil ? .connection : inheritedSource,
+                isOverridden: patch.clipboardEnabled != nil,
                 editor: {
                     Toggle("", isOn: Binding(
-                        get: { overrides.enableClipboard ?? inherited.enableClipboard },
-                        set: { overrides.enableClipboard = $0 }
-                    ))
-                    .labelsHidden()
+                        get: { patch.clipboardEnabled ?? inherited.clipboardEnabled },
+                        set: { patch.clipboardEnabled = $0 }
+                    )).labelsHidden()
                 },
-                onOverride: { overrides.enableClipboard = inherited.enableClipboard },
-                onReset: { overrides.enableClipboard = nil }
+                onOverride: { patch.clipboardEnabled = inherited.clipboardEnabled },
+                onReset: { patch.clipboardEnabled = nil }
             )
         }
     }
 
-    // MARK: - Overrides Summary
+    // MARK: - Section 6: Connection Behavior
 
-    /// A compact banner shown when any overrides are active.
-    /// Lists which fields are overridden so users can scan at a glance without scrolling.
-    private var activeOverridesSummary: some View {
-        Section {
-            HStack(alignment: .top, spacing: 10) {
-                Circle()
-                    .fill(Color.orange)
-                    .frame(width: 8, height: 8)
-                    .padding(.top, 4)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Overrides Active (\(activeFieldNames.count))")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.orange)
-                    Text(activeFieldNames.joined(separator: " · "))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
+    private var connectionBehaviorSection: some View {
+        Section("Connection Behavior") {
+            OverridableRow("Reconnect Attempts",
+                effectiveDisplay: "\(effective.reconnectAttempts)",
+                source: patch.reconnectAttempts != nil ? .connection : inheritedSource,
+                isOverridden: patch.reconnectAttempts != nil,
+                editor: {
+                    Stepper("\(patch.reconnectAttempts ?? inherited.reconnectAttempts)",
+                        value: Binding(
+                            get: { patch.reconnectAttempts ?? inherited.reconnectAttempts },
+                            set: { patch.reconnectAttempts = $0 }
+                        ),
+                        in: 0...20
+                    )
+                },
+                onOverride: { patch.reconnectAttempts = inherited.reconnectAttempts },
+                onReset: { patch.reconnectAttempts = nil }
+            )
         }
-        .listRowBackground(Color.orange.opacity(0.06))
-    }
-
-    private var activeFieldNames: [String] {
-        var names: [String] = []
-        if overrides.port != nil                 { names.append("Port") }
-        if overrides.colorDepth != nil           { names.append("Color Depth") }
-        if overrides.enableClipboard != nil      { names.append("Clipboard Sharing") }
-        if overrides.enableNLA != nil            { names.append("NLA") }
-        if overrides.gatewayMode != nil          { names.append("Gateway Mode") }
-        if overrides.gatewayBypassLocal != nil   { names.append("Bypass Local") }
-        if overrides.reconnectMaxAttempts != nil { names.append("Reconnect Attempts") }
-        if overrides.scaling != nil              { names.append("Scaling") }
-        if overrides.dynamicResolution != nil    { names.append("Auto Resize Display") }
-        return names
     }
 
     // MARK: - Computed Helpers
 
-    /// The fully resolved effective config (for display purposes only, computed cheaply from state)
-    private var effective: RDPProfileDefaults {
-        var r = inherited
-        if let v = overrides.port                 { r.port = v }
-        if let v = overrides.colorDepth           { r.colorDepth = v }
-        if let v = overrides.enableClipboard      { r.enableClipboard = v }
-        if let v = overrides.enableNLA            { r.enableNLA = v }
-        if let v = overrides.gatewayMode          { r.gatewayMode = v }
-        if let v = overrides.gatewayBypassLocal   { r.gatewayBypassLocal = v }
-        if let v = overrides.reconnectMaxAttempts { r.reconnectMaxAttempts = v }
-        if let v = overrides.scaling              { r.scaling = v }
-        if let v = overrides.dynamicResolution    { r.dynamicResolution = v }
-        return r
-    }
-
-    private var effectivePort: Int {
-        overrides.port ?? inherited.port
-    }
+    /// Live effective config for display — cheap in-memory merge from local state, not a disk decode.
+    private var effective: RDPResolvedConfig { inherited.applying(patch) }
 
     private var inheritedSource: OverrideSource {
         appState.editingConnection?.folder.map { .folder(name: $0.name) } ?? .global
@@ -381,10 +328,7 @@ struct ConnectionSheetView: View {
         var parts: [String] = ["Global"]
         var chain: [String] = []
         var f = conn.folder
-        while let folder = f {
-            chain.append(folder.name)
-            f = folder.parentFolder
-        }
+        while let folder = f { chain.append(folder.name); f = folder.parentFolder }
         parts += chain.reversed()
         parts.append(conn.name)
         return parts.joined(separator: " → ")
@@ -401,22 +345,20 @@ struct ConnectionSheetView: View {
             gatewayUsername = editing.gatewayUsername ?? ""
             useGateway = !gatewayUrl.isEmpty
             ignoreCertificateErrors = editing.ignoreCertificateErrors
-            overrides = editing.rdpOverrides
-            hasAnyOverrides = !overrides.isEmpty
+            patch = editing.rdpPatch ?? RDPPatch()
+            hasAnyOverrides = !patch.isEmpty
 
-            // Compute inherited baseline: resolve folder chain WITHOUT this connection's overrides.
-            // We manually walk the chain here (same logic as resolveRDPConfig but with empty overrides).
-            let chain = buildFolderChain(from: editing.folder)
-            inherited = chain.reduce(RDPProfileDefaults.global) { acc, f in
-                f.rdpDefaults ?? acc
+            // Compute inherited baseline: folder chain WITHOUT this connection's patch.
+            // Uses the canonical buildFolderChain(for:) — no local duplicate.
+            let chain = buildFolderChain(for: editing.folder)
+            inherited = chain.reduce(RDPResolvedConfig.global) { acc, f in
+                f.rdpPatch.map { acc.applying($0) } ?? acc
             }.validated()
-            inheritedSourceName = editing.folder?.name ?? "Global"
         }
     }
 
     private func saveConnection() {
-        isSaving = true
-        let finalPort = overrides.port ?? inherited.port
+        let finalPort = patch.port ?? inherited.port
 
         let target: Connection
         if let editing = appState.editingConnection {
@@ -427,19 +369,16 @@ struct ConnectionSheetView: View {
             editing.gatewayUrl = useGateway ? (gatewayUrl.isEmpty ? nil : gatewayUrl) : nil
             editing.gatewayUsername = (!useSameCredentials && useGateway) ? (gatewayUsername.isEmpty ? nil : gatewayUsername) : nil
             editing.ignoreCertificateErrors = ignoreCertificateErrors
-            editing.rdpOverrides = overrides.isEmpty ? RDPOverrides() : overrides
+            editing.rdpPatch = patch.isEmpty ? nil : patch  // nil = no overrides at all
             target = editing
         } else {
             let c = Connection(
-                name: name,
-                host: host,
-                port: finalPort,
-                username: username,
+                name: name, host: host, port: finalPort, username: username,
                 gatewayUrl: useGateway ? (gatewayUrl.isEmpty ? nil : gatewayUrl) : nil,
                 gatewayUsername: (!useSameCredentials && useGateway) ? (gatewayUsername.isEmpty ? nil : gatewayUsername) : nil,
                 ignoreCertificateErrors: ignoreCertificateErrors
             )
-            c.rdpOverrides = overrides
+            c.rdpPatch = patch.isEmpty ? nil : patch
             modelContext.insert(c)
             target = c
         }
@@ -447,10 +386,8 @@ struct ConnectionSheetView: View {
         if !rawPasswordInput.isEmpty {
             try? appState.keychainService.storePassword(rawPasswordInput, for: target.id)
         }
-
         try? modelContext.save()
         appState.isShowingConnectionSheet = false
         dismiss()
     }
 }
-
