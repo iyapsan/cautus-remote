@@ -61,7 +61,10 @@ struct FolderDefaultsSheetView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Custom Defaults Active")
                             .font(.headline)
-                        Text("These settings apply to all connections in this folder unless overridden at the connection level.")
+                        let diffCount = defaults.diff(from: parentEffective).count
+                        Text(diffCount > 0
+                             ? "\(diffCount) setting\(diffCount == 1 ? "" : "s") differ from \(parentSourceName)"
+                             : "These settings apply to all connections in this folder unless overridden at the connection level.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

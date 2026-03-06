@@ -39,6 +39,9 @@ struct ConnectionSheetView: View {
                 // ── Header: Effective profile breadcrumb ──
                 profileBreadcrumb
 
+                // ── Active overrides summary (only if any overrides exist) ──
+                if hasAnyOverrides { activeOverridesSummary }
+
                 // ── Section 1: Connection ──
                 connectionSection
 
@@ -62,7 +65,7 @@ struct ConnectionSheetView: View {
                 }
                 ToolbarItem(placement: .automatic) {
                     if hasAnyOverrides {
-                        Button("Reset Overrides") {
+                        Button("Reset All Overrides") {
                             withAnimation { overrides = RDPOverrides() }
                         }
                         .foregroundStyle(.orange)
@@ -118,17 +121,17 @@ struct ConnectionSheetView: View {
             TextField("Username", text: $username)
             SecureField("Password", text: $rawPasswordInput)
 
-            // Port — overridable
+            // Port — overridable; use String binding to avoid comma formatting (e.g. 3,389)
             OverridableRow(
                 "Port",
                 effectiveDisplay: "\(effectivePort)",
                 source: overrides.port != nil ? .connection : inheritedSource,
                 isOverridden: overrides.port != nil,
                 editor: {
-                    TextField("", value: Binding(
-                        get: { overrides.port ?? inherited.port },
-                        set: { overrides.port = $0 }
-                    ), format: .number)
+                    TextField("", text: Binding(
+                        get: { "\(overrides.port ?? inherited.port)" },
+                        set: { overrides.port = Int($0) }
+                    ))
                     .frame(width: 70)
                 },
                 onOverride: { overrides.port = inherited.port },
@@ -163,7 +166,7 @@ struct ConnectionSheetView: View {
             )
 
             OverridableRow(
-                "Dynamic Resolution",
+                "Auto Resize Display",
                 effectiveDisplay: effective.dynamicResolution ? "Enabled" : "Disabled",
                 source: overrides.dynamicResolution != nil ? .connection : inheritedSource,
                 isOverridden: overrides.dynamicResolution != nil,
@@ -222,7 +225,7 @@ struct ConnectionSheetView: View {
             )
 
             Group {
-                Toggle("Allow Untrusted Certificates", isOn: $ignoreCertificateErrors)
+                Toggle("Allow Self-Signed Certificates", isOn: $ignoreCertificateErrors)
                     .foregroundStyle(ignoreCertificateErrors ? .red : .primary)
                 if ignoreCertificateErrors {
                     Text("⚠️ Not recommended for production environments")
@@ -292,7 +295,7 @@ struct ConnectionSheetView: View {
     private var clipboardSection: some View {
         Section("Clipboard") {
             OverridableRow(
-                "Clipboard Sync",
+                "Clipboard Sharing",
                 effectiveDisplay: effective.enableClipboard ? "Enabled" : "Disabled",
                 source: overrides.enableClipboard != nil ? .connection : inheritedSource,
                 isOverridden: overrides.enableClipboard != nil,
@@ -307,6 +310,45 @@ struct ConnectionSheetView: View {
                 onReset: { overrides.enableClipboard = nil }
             )
         }
+    }
+
+    // MARK: - Overrides Summary
+
+    /// A compact banner shown when any overrides are active.
+    /// Lists which fields are overridden so users can scan at a glance without scrolling.
+    private var activeOverridesSummary: some View {
+        Section {
+            HStack(alignment: .top, spacing: 10) {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 8, height: 8)
+                    .padding(.top, 4)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Overrides Active (\(activeFieldNames.count))")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.orange)
+                    Text(activeFieldNames.joined(separator: " · "))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .listRowBackground(Color.orange.opacity(0.06))
+    }
+
+    private var activeFieldNames: [String] {
+        var names: [String] = []
+        if overrides.port != nil                 { names.append("Port") }
+        if overrides.colorDepth != nil           { names.append("Color Depth") }
+        if overrides.enableClipboard != nil      { names.append("Clipboard Sharing") }
+        if overrides.enableNLA != nil            { names.append("NLA") }
+        if overrides.gatewayMode != nil          { names.append("Gateway Mode") }
+        if overrides.gatewayBypassLocal != nil   { names.append("Bypass Local") }
+        if overrides.reconnectMaxAttempts != nil { names.append("Reconnect Attempts") }
+        if overrides.scaling != nil              { names.append("Scaling") }
+        if overrides.dynamicResolution != nil    { names.append("Auto Resize Display") }
+        return names
     }
 
     // MARK: - Computed Helpers

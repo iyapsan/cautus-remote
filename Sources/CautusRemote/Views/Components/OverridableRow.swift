@@ -17,27 +17,25 @@ enum OverrideSource {
 
     var color: Color {
         switch self {
-        case .global:           return .secondary
-        case .folder:           return .secondary
+        case .global, .folder:  return .secondary
         case .connection:       return .orange
         }
+    }
+
+    var isOverrideState: Bool {
+        if case .connection = self { return true }
+        return false
     }
 }
 
 // MARK: - OverridableRow
 
-/// A form row that shows an effective value, a source badge, and an Override/Reset button.
-/// The architecture (blobs, resolver) is unchanged. This is purely a display layer.
+/// A form row that shows an effective value, a source line, and an Override/Reset action.
 ///
-/// Usage:
-///   OverridableRow("Clipboard", effectiveDisplay: "Enabled", source: .folder("prod")) {
-///       // shown when override is active
-///       Toggle("Clipboard", isOn: $someBinding)
-///   } onOverride: {
-///       // set the override to the current effective value when user taps Override
-///   } onReset: {
-///       // clear the override
-///   }
+/// Layout: Label / Value or Editor / ● Overridden | Inherited from X · Reset
+///
+/// The ● dot and inline Reset make the override state instantly scannable —
+/// no checkbox, no tri-state picker, no visual clutter.
 struct OverridableRow<Editor: View>: View {
     let label: String
     let effectiveDisplay: String
@@ -66,41 +64,49 @@ struct OverridableRow<Editor: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(label)
-                        .font(.body)
-                    if isOverridden {
-                        // Show the live editor inline
-                        editor()
-                            .padding(.top, 2)
-                    } else {
-                        Text(effectiveDisplay)
-                            .foregroundStyle(.primary)
-                    }
-                    Text(source.label)
-                        .font(.caption)
-                        .foregroundStyle(source.color)
-                }
+        VStack(alignment: .leading, spacing: 5) {
+            // ── Label ──────────────────────────────────────────────────────
+            Text(label)
+                .font(.body)
 
-                Spacer()
+            // ── Value or inline editor ─────────────────────────────────────
+            if isOverridden {
+                editor()
+            } else {
+                Text(effectiveDisplay)
+                    .foregroundStyle(.primary)
+            }
+
+            // ── Source status + action on same line ────────────────────────
+            // "● Overridden  ·  Reset"   or   "Inherited from prod  ·  Override"
+            HStack(spacing: 6) {
+                if isOverridden {
+                    // Orange dot signals overridden state — scannable at a glance
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 6, height: 6)
+                }
+                Text(source.label)
+                    .font(.caption)
+                    .foregroundStyle(source.color)
+
+                Text("·")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
 
                 if isOverridden {
                     Button("Reset") { onReset() }
                         .buttonStyle(.plain)
                         .font(.caption)
                         .foregroundStyle(.orange)
-                        .padding(.top, 2)
                 } else {
                     Button("Override") { onOverride() }
                         .buttonStyle(.plain)
                         .font(.caption)
                         .foregroundStyle(Color.accentColor)
-                        .padding(.top, 2)
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 3)
     }
 }
