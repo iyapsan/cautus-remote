@@ -31,6 +31,8 @@ struct ProfileResolutionTests {
         #expect(eff.clipboardEnabled == true)
         #expect(eff.nlaRequired == true)
         #expect(eff.reconnectAttempts == 5)
+        #expect(eff.audioEnabled == false)
+        #expect(eff.driveRedirectionEnabled == false)
     }
 
     // ✅ Single folder patch overrides only the fields it sets; others stay global
@@ -121,6 +123,8 @@ struct ProfileResolutionTests {
         #expect(keys.contains("Clipboard Sharing"))
         #expect(!keys.contains("NLA"))
         #expect(!keys.contains("Scaling"))
+        #expect(!keys.contains("Audio"))
+        #expect(!keys.contains("Drive Redirection"))
     }
 
     // ✅ RDPPatch.isEmpty

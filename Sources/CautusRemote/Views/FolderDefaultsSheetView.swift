@@ -101,6 +101,10 @@ struct FolderDefaultsSheetView: View {
                          overridden: isCustomizing && editingPatch.gatewayMode != nil)
             effectiveRow("Bypass Local", value: resolved.gatewayBypassLocal ? "On" : "Off",
                          overridden: isCustomizing && editingPatch.gatewayBypassLocal != nil)
+            effectiveRow("Audio", value: resolved.audioEnabled ? "On" : "Off",
+                         overridden: isCustomizing && editingPatch.audioEnabled != nil)
+            effectiveRow("Drive Redirection", value: resolved.driveRedirectionEnabled ? "On" : "Off",
+                         overridden: isCustomizing && editingPatch.driveRedirectionEnabled != nil)
             effectiveRow("Reconnect Attempts", value: "\(resolved.reconnectAttempts)",
                          overridden: isCustomizing && editingPatch.reconnectAttempts != nil)
         }
@@ -213,6 +217,28 @@ struct FolderDefaultsSheetView: View {
                             get: { editingPatch.reconnectAttempts ?? parentResolved.reconnectAttempts },
                             set: { editingPatch.reconnectAttempts = $0 }
                         ), in: 0...20)
+                }
+
+                // Audio
+                patchToggleRow("Audio", isSet: editingPatch.audioEnabled != nil,
+                    onEnable: { editingPatch.audioEnabled = parentResolved.audioEnabled },
+                    onDisable: { editingPatch.audioEnabled = nil }
+                ) {
+                    Toggle("", isOn: Binding(
+                        get: { editingPatch.audioEnabled ?? parentResolved.audioEnabled },
+                        set: { editingPatch.audioEnabled = $0 }
+                    )).labelsHidden()
+                }
+
+                // Drive Redirection
+                patchToggleRow("Drive Redirection", isSet: editingPatch.driveRedirectionEnabled != nil,
+                    onEnable: { editingPatch.driveRedirectionEnabled = parentResolved.driveRedirectionEnabled },
+                    onDisable: { editingPatch.driveRedirectionEnabled = nil }
+                ) {
+                    Toggle("", isOn: Binding(
+                        get: { editingPatch.driveRedirectionEnabled ?? parentResolved.driveRedirectionEnabled },
+                        set: { editingPatch.driveRedirectionEnabled = $0 }
+                    )).labelsHidden()
                 }
             }
         }

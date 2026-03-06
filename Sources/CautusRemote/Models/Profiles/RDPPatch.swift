@@ -20,6 +20,8 @@ public struct RDPPatch: Codable, Equatable, Sendable {
     public var gatewayMode: GatewayMode?
     public var gatewayBypassLocal: Bool?
     public var reconnectAttempts: Int?
+    public var audioEnabled: Bool?
+    public var driveRedirectionEnabled: Bool?
 
     public init(
         port: Int? = nil,
@@ -30,7 +32,9 @@ public struct RDPPatch: Codable, Equatable, Sendable {
         nlaRequired: Bool? = nil,
         gatewayMode: GatewayMode? = nil,
         gatewayBypassLocal: Bool? = nil,
-        reconnectAttempts: Int? = nil
+        reconnectAttempts: Int? = nil,
+        audioEnabled: Bool? = nil,
+        driveRedirectionEnabled: Bool? = nil
     ) {
         self.port = port
         self.colorDepth = colorDepth
@@ -41,6 +45,8 @@ public struct RDPPatch: Codable, Equatable, Sendable {
         self.gatewayMode = gatewayMode
         self.gatewayBypassLocal = gatewayBypassLocal
         self.reconnectAttempts = reconnectAttempts
+        self.audioEnabled = audioEnabled
+        self.driveRedirectionEnabled = driveRedirectionEnabled
     }
 
     /// True when every field is nil — semantically "no overrides at all".
@@ -49,6 +55,7 @@ public struct RDPPatch: Codable, Equatable, Sendable {
         port == nil && colorDepth == nil && scaling == nil &&
         dynamicResolution == nil && clipboardEnabled == nil &&
         nlaRequired == nil && gatewayMode == nil &&
-        gatewayBypassLocal == nil && reconnectAttempts == nil
+        gatewayBypassLocal == nil && reconnectAttempts == nil &&
+        audioEnabled == nil && driveRedirectionEnabled == nil
     }
 }

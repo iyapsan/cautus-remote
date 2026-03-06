@@ -41,6 +41,7 @@ struct ConnectionSheetView: View {
                 securitySection
                 gatewaySection
                 clipboardSection
+                redirectionSection
                 connectionBehaviorSection
             }
             .formStyle(.grouped)
@@ -115,6 +116,8 @@ struct ConnectionSheetView: View {
         if patch.reconnectAttempts != nil  { n.append("Reconnect Attempts") }
         if patch.scaling != nil            { n.append("Scaling") }
         if patch.dynamicResolution != nil  { n.append("Auto Resize Display") }
+        if patch.audioEnabled != nil       { n.append("Audio") }
+        if patch.driveRedirectionEnabled != nil { n.append("Drive Redirection") }
         return n
     }
 
@@ -272,7 +275,7 @@ struct ConnectionSheetView: View {
     }
 
     // MARK: - Section 5: Clipboard
-
+    
     private var clipboardSection: some View {
         Section("Clipboard") {
             OverridableRow("Clipboard Sharing",
@@ -287,6 +290,40 @@ struct ConnectionSheetView: View {
                 },
                 onOverride: { patch.clipboardEnabled = inherited.clipboardEnabled },
                 onReset: { patch.clipboardEnabled = nil }
+            )
+        }
+    }
+
+    // MARK: - Section 5b: Redirection
+    
+    private var redirectionSection: some View {
+        Section("Redirection") {
+            OverridableRow("Audio",
+                effectiveDisplay: effective.audioEnabled ? "Enabled" : "Disabled",
+                source: patch.audioEnabled != nil ? .connection : inheritedSource,
+                isOverridden: patch.audioEnabled != nil,
+                editor: {
+                    Toggle("", isOn: Binding(
+                        get: { patch.audioEnabled ?? inherited.audioEnabled },
+                        set: { patch.audioEnabled = $0 }
+                    )).labelsHidden()
+                },
+                onOverride: { patch.audioEnabled = inherited.audioEnabled },
+                onReset: { patch.audioEnabled = nil }
+            )
+            
+            OverridableRow("Drive Redirection",
+                effectiveDisplay: effective.driveRedirectionEnabled ? "Enabled" : "Disabled",
+                source: patch.driveRedirectionEnabled != nil ? .connection : inheritedSource,
+                isOverridden: patch.driveRedirectionEnabled != nil,
+                editor: {
+                    Toggle("", isOn: Binding(
+                        get: { patch.driveRedirectionEnabled ?? inherited.driveRedirectionEnabled },
+                        set: { patch.driveRedirectionEnabled = $0 }
+                    )).labelsHidden()
+                },
+                onOverride: { patch.driveRedirectionEnabled = inherited.driveRedirectionEnabled },
+                onReset: { patch.driveRedirectionEnabled = nil }
             )
         }
     }

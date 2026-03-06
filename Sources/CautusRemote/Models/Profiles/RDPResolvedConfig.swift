@@ -62,6 +62,8 @@ public struct RDPResolvedConfig: Codable, Equatable, Sendable {
     public var gatewayMode: GatewayMode
     public var gatewayBypassLocal: Bool
     public var reconnectAttempts: Int
+    public var audioEnabled: Bool
+    public var driveRedirectionEnabled: Bool
 
     public init(
         port: Int = 3389,
@@ -72,7 +74,9 @@ public struct RDPResolvedConfig: Codable, Equatable, Sendable {
         nlaRequired: Bool = true,
         gatewayMode: GatewayMode = .auto,
         gatewayBypassLocal: Bool = true,
-        reconnectAttempts: Int = 5
+        reconnectAttempts: Int = 5,
+        audioEnabled: Bool = false,
+        driveRedirectionEnabled: Bool = false
     ) {
         self.port = port
         self.colorDepth = colorDepth
@@ -83,6 +87,8 @@ public struct RDPResolvedConfig: Codable, Equatable, Sendable {
         self.gatewayMode = gatewayMode
         self.gatewayBypassLocal = gatewayBypassLocal
         self.reconnectAttempts = reconnectAttempts
+        self.audioEnabled = audioEnabled
+        self.driveRedirectionEnabled = driveRedirectionEnabled
     }
 
     // MARK: - Patch Application
@@ -92,15 +98,17 @@ public struct RDPResolvedConfig: Codable, Equatable, Sendable {
     /// This is the single canonical merge operation — both folder and connection patches use it.
     public func applying(_ patch: RDPPatch) -> RDPResolvedConfig {
         var r = self
-        if let v = patch.port               { r.port = v }
-        if let v = patch.colorDepth         { r.colorDepth = v }
-        if let v = patch.scaling            { r.scaling = v }
-        if let v = patch.dynamicResolution  { r.dynamicResolution = v }
-        if let v = patch.clipboardEnabled   { r.clipboardEnabled = v }
-        if let v = patch.nlaRequired        { r.nlaRequired = v }
-        if let v = patch.gatewayMode        { r.gatewayMode = v }
-        if let v = patch.gatewayBypassLocal { r.gatewayBypassLocal = v }
-        if let v = patch.reconnectAttempts  { r.reconnectAttempts = v }
+        if let v = patch.port                    { r.port = v }
+        if let v = patch.colorDepth              { r.colorDepth = v }
+        if let v = patch.scaling                 { r.scaling = v }
+        if let v = patch.dynamicResolution       { r.dynamicResolution = v }
+        if let v = patch.clipboardEnabled        { r.clipboardEnabled = v }
+        if let v = patch.nlaRequired             { r.nlaRequired = v }
+        if let v = patch.gatewayMode             { r.gatewayMode = v }
+        if let v = patch.gatewayBypassLocal      { r.gatewayBypassLocal = v }
+        if let v = patch.reconnectAttempts       { r.reconnectAttempts = v }
+        if let v = patch.audioEnabled            { r.audioEnabled = v }
+        if let v = patch.driveRedirectionEnabled { r.driveRedirectionEnabled = v }
         return r
     }
 
@@ -122,15 +130,17 @@ public struct RDPResolvedConfig: Codable, Equatable, Sendable {
     /// patch nil means "inherit" which is semantically different from "same value".
     public func diff(from other: RDPResolvedConfig) -> [(key: String, value: String)] {
         var result: [(String, String)] = []
-        if port != other.port                             { result.append(("Port", "\(port)")) }
-        if colorDepth != other.colorDepth                 { result.append(("Color Depth", colorDepth.displayName)) }
-        if scaling != other.scaling                       { result.append(("Scaling", scaling.displayName)) }
-        if dynamicResolution != other.dynamicResolution   { result.append(("Auto Resize Display", dynamicResolution ? "On" : "Off")) }
-        if clipboardEnabled != other.clipboardEnabled     { result.append(("Clipboard Sharing", clipboardEnabled ? "On" : "Off")) }
-        if nlaRequired != other.nlaRequired               { result.append(("NLA", nlaRequired ? "On" : "Off")) }
-        if gatewayMode != other.gatewayMode               { result.append(("Gateway Mode", gatewayMode.displayName)) }
-        if gatewayBypassLocal != other.gatewayBypassLocal { result.append(("Bypass Local", gatewayBypassLocal ? "On" : "Off")) }
-        if reconnectAttempts != other.reconnectAttempts   { result.append(("Reconnect Attempts", "\(reconnectAttempts)")) }
+        if port != other.port                                         { result.append(("Port", "\(port)")) }
+        if colorDepth != other.colorDepth                             { result.append(("Color Depth", colorDepth.displayName)) }
+        if scaling != other.scaling                                   { result.append(("Scaling", scaling.displayName)) }
+        if dynamicResolution != other.dynamicResolution               { result.append(("Auto Resize Display", dynamicResolution ? "On" : "Off")) }
+        if clipboardEnabled != other.clipboardEnabled                 { result.append(("Clipboard Sharing", clipboardEnabled ? "On" : "Off")) }
+        if nlaRequired != other.nlaRequired                           { result.append(("NLA", nlaRequired ? "On" : "Off")) }
+        if gatewayMode != other.gatewayMode                           { result.append(("Gateway Mode", gatewayMode.displayName)) }
+        if gatewayBypassLocal != other.gatewayBypassLocal             { result.append(("Bypass Local", gatewayBypassLocal ? "On" : "Off")) }
+        if reconnectAttempts != other.reconnectAttempts               { result.append(("Reconnect Attempts", "\(reconnectAttempts)")) }
+        if audioEnabled != other.audioEnabled                         { result.append(("Audio", audioEnabled ? "On" : "Off")) }
+        if driveRedirectionEnabled != other.driveRedirectionEnabled   { result.append(("Drive Redirection", driveRedirectionEnabled ? "On" : "Off")) }
         return result
     }
 
@@ -147,6 +157,7 @@ extension RDPResolvedConfig: CustomStringConvertible {
     public var description: String {
         "RDPResolvedConfig(port:\(port) depth:\(colorDepth.rawValue) clipboard:\(clipboardEnabled) " +
         "nla:\(nlaRequired) gw:\(gatewayMode) gwBypass:\(gatewayBypassLocal) " +
-        "retries:\(reconnectAttempts) scaling:\(scaling) dynRes:\(dynamicResolution))"
+        "retries:\(reconnectAttempts) scaling:\(scaling) dynRes:\(dynamicResolution) " +
+        "audio:\(audioEnabled) driveRedir:\(driveRedirectionEnabled))"
     }
 }

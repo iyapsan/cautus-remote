@@ -85,6 +85,12 @@ struct GlobalDefaultsSheetView: View {
                     Toggle("Clipboard Sharing", isOn: $config.clipboardEnabled)
                 }
 
+                // ── Redirection ─────────────────────────────────────────────────────
+                Section("Redirection") {
+                    Toggle("Enable Audio Output", isOn: $config.audioEnabled)
+                    Toggle("Enable Drive Redirection", isOn: $config.driveRedirectionEnabled)
+                }
+
                 // ── Connection Behavior ─────────────────────────────────────────────
                 Section("Connection Behavior") {
                     Stepper("Reconnect Attempts: \(config.reconnectAttempts)",

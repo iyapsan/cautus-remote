@@ -51,7 +51,11 @@ let package = Package(
                     "-framework", "Cocoa",
                     "-framework", "Security",
                     "-framework", "SystemConfiguration",
-                    "-framework", "IOKit"
+                    "-framework", "IOKit",
+                    "-framework", "AudioToolbox",
+                    "-framework", "AVFoundation",
+                    "-framework", "Carbon",
+                    "-framework", "CoreAudio"
                 ])
             ]
         ),

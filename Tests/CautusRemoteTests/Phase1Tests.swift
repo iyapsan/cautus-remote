@@ -6,7 +6,7 @@ import Foundation
 struct ModelTests {
     @Test func connectionDefaults() async throws {
         let conn = Connection(name: "Test Server", host: "192.168.1.1", username: "admin")
-        #expect(conn.port == 22)
+        #expect(conn.port == 3389)
         #expect(conn.authMethod == .password)
         #expect(conn.isFavorite == false)
         #expect(conn.keepaliveInterval == 60)

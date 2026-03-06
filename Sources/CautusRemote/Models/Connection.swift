@@ -106,7 +106,7 @@ final class Connection {
 
     /// Display string for the connection (user@host:port)
     var displayAddress: String {
-        port == 22 ? "\(username)@\(host)" : "\(username)@\(host):\(port)"
+        port == 3389 ? "\(username)@\(host)" : "\(username)@\(host):\(port)"
     }
 
     // MARK: - Effective RDP Configuration
