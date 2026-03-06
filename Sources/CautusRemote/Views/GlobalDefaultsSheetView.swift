@@ -93,7 +93,7 @@ struct GlobalDefaultsSheetView: View {
 
                 // ── Reset ───────────────────────────────────────────────────────────
                 Section {
-                    Button("Reset to Factory Defaults") {
+                    Button("Restore Default Settings") {
                         withAnimation { config = .global }
                     }
                     .foregroundStyle(.red)

@@ -552,7 +552,7 @@ private struct ConnectionsSectionHeader: View {
             } label: {
                 Image(systemName: "slider.horizontal.3")
                     .font(.caption)
-                    .foregroundStyle(isHovering ? Color.accentColor : .clear)
+                    .foregroundStyle(isHovering ? Color.accentColor : Color.secondary.opacity(0.4))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

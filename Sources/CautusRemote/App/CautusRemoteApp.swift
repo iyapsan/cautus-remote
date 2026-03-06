@@ -93,6 +93,12 @@ struct CautusRemoteApp: App {
                 }
                 .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
             }
+            CommandMenu("Connections") {
+                Button("Edit Global Defaults…") {
+                    appState.isShowingGlobalDefaultsSheet = true
+                }
+                .keyboardShortcut(",", modifiers: [.command, .option])
+            }
         }
     }
 }
