@@ -97,7 +97,7 @@ struct CautusRemoteApp: App {
                 Button("Edit Global Defaults…") {
                     appState.isShowingGlobalDefaultsSheet = true
                 }
-                .keyboardShortcut(",", modifiers: [.command, .option])
+                .keyboardShortcut("d", modifiers: [.command, .option])
             }
         }
     }
