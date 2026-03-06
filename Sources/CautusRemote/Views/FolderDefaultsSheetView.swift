@@ -54,13 +54,14 @@ struct FolderDefaultsSheetView: View {
     private var statusSection: some View {
         Section {
             if isCustomizing {
-                HStack {
+                HStack(spacing: 12) {
                     Image(systemName: "slider.horizontal.3")
+                        .font(.title3)
                         .foregroundStyle(.orange)
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text("Custom Defaults Active")
                             .font(.headline)
-                        Text("These settings override the parent for all connections in this folder.")
+                        Text("These settings apply to all connections in this folder unless overridden at the connection level.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -73,25 +74,28 @@ struct FolderDefaultsSheetView: View {
                     }
                     .foregroundStyle(.orange)
                 }
+                .padding(.vertical, 2)
             } else {
-                HStack {
+                HStack(spacing: 12) {
                     Image(systemName: "arrow.down.circle")
+                        .font(.title3)
                         .foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Using \(parentSourceName) Defaults")
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Using Parent Defaults")
                             .font(.headline)
-                        Text("All connections in this folder inherit from \(parentSourceName).")
+                        Text("Inherited from: \(parentSourceName)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Customize") {
+                    Button("Customize for this Folder") {
                         withAnimation {
                             defaults = parentEffective
                             isCustomizing = true
                         }
                     }
                 }
+                .padding(.vertical, 2)
             }
         }
     }
@@ -99,7 +103,7 @@ struct FolderDefaultsSheetView: View {
     // MARK: - Read-only effective summary (when not customizing)
 
     private var readonlyEffectiveSummary: some View {
-        Section("Effective Values") {
+        Section("Effective Values — from \(parentSourceName)") {
             effectiveRow("Port", value: "\(parentEffective.port)")
             effectiveRow("Color Depth", value: parentEffective.colorDepth.displayName)
             effectiveRow("Scaling", value: parentEffective.scaling.displayName)

@@ -73,7 +73,7 @@ struct ConnectionSheetView: View {
                         .disabled(name.isEmpty || host.isEmpty || username.isEmpty)
                 }
             }
-            .frame(width: 490, height: 620)
+            .frame(width: 490, height: 650)
             .onAppear { loadExistingValues() }
             .onChange(of: overrides) { _, _ in
                 hasAnyOverrides = !overrides.isEmpty
@@ -87,18 +87,26 @@ struct ConnectionSheetView: View {
         Section {
             let breadcrumb = buildBreadcrumb()
             if !breadcrumb.isEmpty {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.triangle.branch")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Effective Profile")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Text(breadcrumb)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.tertiary)
+                        .textCase(.uppercase)
+                        .tracking(0.5)
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.triangle.branch")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text(breadcrumb)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }
         .listRowBackground(Color.clear)
-        .listRowInsets(.init(top: 4, leading: 16, bottom: 0, trailing: 16))
+        .listRowInsets(.init(top: 6, leading: 16, bottom: 4, trailing: 16))
     }
 
     // MARK: - Section 1: Connection
@@ -214,7 +222,7 @@ struct ConnectionSheetView: View {
             )
 
             Group {
-                Toggle("Ignore Certificate Errors", isOn: $ignoreCertificateErrors)
+                Toggle("Allow Untrusted Certificates", isOn: $ignoreCertificateErrors)
                     .foregroundStyle(ignoreCertificateErrors ? .red : .primary)
                 if ignoreCertificateErrors {
                     Text("⚠️ Not recommended for production environments")
