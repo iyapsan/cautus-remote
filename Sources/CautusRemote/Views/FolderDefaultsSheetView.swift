@@ -2,161 +2,205 @@ import SwiftUI
 import SwiftData
 
 /// Settings sheet for editing a folder's RDP profile defaults.
-/// Opened from the folder context menu: "Edit RDP Defaults…"
+/// Opened via the folder context menu: "Edit RDP Defaults…"
 ///
-/// Design: "inherit from parent" is the default state — represented by the *absence* of data.
-/// Setting the toggle to "Inherit" clears `folder.rdpDefaultsData`, propagating up to the parent.
+/// UX design: Always show effective values first. A "Customize for this folder"
+/// button activates editing. "Reset to Parent" clears defaults and re-inherits.
+/// The screen is never empty or confusing.
 struct FolderDefaultsSheetView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
     let folder: Folder
 
-    // Local working copy; only written back to the model on Save
-    @State private var inheriting: Bool = true
+    // Local working copy of defaults for this folder
+    @State private var isCustomizing: Bool = false
     @State private var defaults: RDPProfileDefaults = .global
 
-    // For the "diff from parent" display
+    // What the parent chain resolves to (shown when not customizing)
     @State private var parentEffective: RDPProfileDefaults = .global
+    @State private var parentSourceName: String = "Global"
 
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    Toggle("Inherit from Parent Folder", isOn: $inheriting)
-                        .onChange(of: inheriting) { _, on in
-                            if on { defaults = parentEffective }
-                        }
+                // ── Status Section: always visible, explains current state ──
+                statusSection
 
-                    if !inheriting {
-                        // Show which fields differ from parent for premium "Overriding: …" feel
-                        let overridingFields = defaults.diff(from: parentEffective)
-                        if !overridingFields.isEmpty {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Overriding:")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Text(overridingFields.map { "\($0.key)=\($0.value)" }.joined(separator: ", "))
-                                    .font(.caption)
-                                    .foregroundStyle(.orange)
-                            }
-                        }
-                    }
-                } header: {
-                    Text("RDP Defaults")
-                } footer: {
-                    if inheriting {
-                        Text("Connections inside this folder will use parent folder defaults (or global defaults if no parent overrides exist).")
-                    } else {
-                        Text("Settings below override parent folder defaults for all connections in this folder that don't set their own overrides.")
-                    }
-                }
-
-                if !inheriting {
-                    Section("Network") {
-                        LabeledContent("Port") {
-                            TextField("Port", value: $defaults.port, format: .number)
-                                .frame(width: 80)
-                                .multilineTextAlignment(.trailing)
-                        }
-
-                        Picker("Color Depth", selection: $defaults.colorDepth) {
-                            ForEach(RDPColorDepth.allCases, id: \.self) {
-                                Text($0.displayName).tag($0)
-                            }
-                        }
-                    }
-
-                    Section("Security") {
-                        Toggle("Require NLA", isOn: $defaults.enableNLA)
-                    }
-
-                    Section("Gateway") {
-                        Picker("Mode", selection: $defaults.gatewayMode) {
-                            ForEach(GatewayMode.allCases, id: \.self) {
-                                Text($0.displayName).tag($0)
-                            }
-                        }
-                        Toggle("Bypass Gateway for Local Addresses", isOn: $defaults.gatewayBypassLocal)
-                    }
-
-                    Section("Clipboard") {
-                        Toggle("Enable Clipboard", isOn: $defaults.enableClipboard)
-                    }
-
-                    Section("Display") {
-                        Picker("Scaling", selection: $defaults.scaling) {
-                            ForEach(RDPScalingMode.allCases, id: \.self) {
-                                Text($0.displayName).tag($0)
-                            }
-                        }
-                        Toggle("Dynamic Resolution", isOn: $defaults.dynamicResolution)
-                    }
-
-                    Section("Reconnect") {
-                        Stepper("Max Attempts: \(defaults.reconnectMaxAttempts)",
-                                value: $defaults.reconnectMaxAttempts, in: 0...20)
-                    }
+                // ── Values: always show effective values ──
+                if isCustomizing {
+                    customizationForm
+                } else {
+                    readonlyEffectiveSummary
                 }
             }
             .formStyle(.grouped)
-            .navigationTitle("Folder Defaults")
+            .navigationTitle("\(folder.name) — RDP Defaults")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save(); dismiss() }
                 }
             }
-            .frame(width: 460, height: 560)
-            .onAppear { loadCurrentState() }
+            .frame(width: 460, height: 520)
+            .onAppear { loadState() }
         }
     }
 
-    // MARK: - Private
+    // MARK: - Status Section
 
-    private func loadCurrentState() {
-        inheriting = (folder.rdpDefaultsData == nil)
-        defaults = folder.rdpDefaults ?? .global
+    private var statusSection: some View {
+        Section {
+            if isCustomizing {
+                HStack {
+                    Image(systemName: "slider.horizontal.3")
+                        .foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Custom Defaults Active")
+                            .font(.headline)
+                        Text("These settings override the parent for all connections in this folder.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Reset to Parent") {
+                        withAnimation {
+                            isCustomizing = false
+                            defaults = parentEffective
+                        }
+                    }
+                    .foregroundStyle(.orange)
+                }
+            } else {
+                HStack {
+                    Image(systemName: "arrow.down.circle")
+                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Using \(parentSourceName) Defaults")
+                            .font(.headline)
+                        Text("All connections in this folder inherit from \(parentSourceName).")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Customize") {
+                        withAnimation {
+                            defaults = parentEffective
+                            isCustomizing = true
+                        }
+                    }
+                }
+            }
+        }
+    }
 
-        // Build parent effective config for diff display
+    // MARK: - Read-only effective summary (when not customizing)
+
+    private var readonlyEffectiveSummary: some View {
+        Section("Effective Values") {
+            effectiveRow("Port", value: "\(parentEffective.port)")
+            effectiveRow("Color Depth", value: parentEffective.colorDepth.displayName)
+            effectiveRow("Scaling", value: parentEffective.scaling.displayName)
+            effectiveRow("Clipboard", value: parentEffective.enableClipboard ? "Enabled" : "Disabled")
+            effectiveRow("NLA", value: parentEffective.enableNLA ? "Required" : "Not required")
+            effectiveRow("Gateway Mode", value: parentEffective.gatewayMode.displayName)
+            effectiveRow("Dynamic Resolution", value: parentEffective.dynamicResolution ? "On" : "Off")
+            effectiveRow("Max Reconnects", value: "\(parentEffective.reconnectMaxAttempts)")
+        }
+    }
+
+    private func effectiveRow(_ label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(value)
+                .foregroundStyle(.primary)
+        }
+    }
+
+    // MARK: - Customization Form
+
+    private var customizationForm: some View {
+        Group {
+            Section("Network") {
+                LabeledContent("Port") {
+                    TextField("Port", value: $defaults.port, format: .number)
+                        .frame(width: 80)
+                        .multilineTextAlignment(.trailing)
+                }
+
+                LabeledContent("Color Depth") {
+                    Picker("", selection: $defaults.colorDepth) {
+                        ForEach(RDPColorDepth.allCases, id: \.self) { d in
+                            Text(d.displayName).tag(d)
+                        }
+                    }
+                    .labelsHidden()
+                }
+            }
+
+            Section("Display") {
+                Picker("Scaling", selection: $defaults.scaling) {
+                    ForEach(RDPScalingMode.allCases, id: \.self) { m in
+                        Text(m.displayName).tag(m)
+                    }
+                }
+                Toggle("Dynamic Resolution", isOn: $defaults.dynamicResolution)
+            }
+
+            Section("Security") {
+                Toggle("Require NLA", isOn: $defaults.enableNLA)
+            }
+
+            Section("Gateway") {
+                Picker("Gateway Mode", selection: $defaults.gatewayMode) {
+                    ForEach(GatewayMode.allCases, id: \.self) { m in
+                        Text(m.displayName).tag(m)
+                    }
+                }
+                Toggle("Bypass Local Addresses", isOn: $defaults.gatewayBypassLocal)
+            }
+
+            Section("Clipboard") {
+                Toggle("Clipboard Sync", isOn: $defaults.enableClipboard)
+            }
+
+            Section("Reconnect") {
+                Stepper("Max Attempts: \(defaults.reconnectMaxAttempts)",
+                        value: $defaults.reconnectMaxAttempts, in: 0...20)
+            }
+        }
+    }
+
+    // MARK: - Save / Load
+
+    private func loadState() {
+        // Build what the parent chain resolves to (no defaults from this folder)
         let parentChain = buildFolderChain(from: folder.parentFolder)
-        parentEffective = resolveRDPConfig(
-            connection: _DummyConnection(),
-            folderChain: parentChain,
-            global: .global
-        )
+        parentEffective = parentChain.reduce(RDPProfileDefaults.global) { acc, f in
+            f.rdpDefaults ?? acc
+        }.validated()
+        parentSourceName = folder.parentFolder?.name ?? "Global"
+
+        // Determine if this folder has its own defaults
+        if let existing = folder.rdpDefaults {
+            defaults = existing
+            isCustomizing = true
+        } else {
+            defaults = parentEffective
+            isCustomizing = false
+        }
     }
 
     private func save() {
-        if inheriting {
-            folder.rdpDefaultsData = nil
-        } else {
+        if isCustomizing {
             folder.rdpDefaults = defaults.validated()
+        } else {
+            folder.rdpDefaultsData = nil // clear → inherit
         }
         try? modelContext.save()
     }
-}
-
-/// Lightweight placeholder used when building parent effective config without a real connection.
-private struct _DummyConnection {
-    var rdpOverrides: RDPOverrides { RDPOverrides() }
-    var folder: Folder? { nil }
-}
-
-// Make _DummyConnection work with the resolver by making it conform to the same interface.
-// We do this by overloading resolveRDPConfig to accept any type that exposes rdpOverrides.
-private func resolveRDPConfig(
-    connection: _DummyConnection,
-    folderChain: [Folder],
-    global: RDPProfileDefaults
-) -> RDPProfileDefaults {
-    var result = global
-    for folder in folderChain {
-        if let d = folder.rdpDefaults { result = d }
-    }
-    return result.applying(connection.rdpOverrides).validated()
-}
-
-private extension RDPProfileDefaults {
-    func applying(_ overrides: RDPOverrides) -> RDPProfileDefaults { self }
 }
