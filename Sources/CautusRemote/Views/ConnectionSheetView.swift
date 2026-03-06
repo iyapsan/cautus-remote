@@ -125,7 +125,7 @@ struct ConnectionSheetView: View {
     // MARK: - Section 1: Connection
 
     private var connectionSection: some View {
-        Section("Connection") {
+        Section {
             TextField("Name", text: $name)
             TextField("Host (IP or FQDN)", text: $host)
             TextField("Username", text: $username)
@@ -145,6 +145,8 @@ struct ConnectionSheetView: View {
                 onOverride: { patch.port = inherited.port },
                 onReset: { patch.port = nil }
             )
+        } header: {
+            Text("Connection")
         }
     }
 
