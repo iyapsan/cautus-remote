@@ -34,7 +34,25 @@ struct ConnectionSheetView: View {
     var body: some View {
         NavigationStack {
             Form {
-                profileBreadcrumb
+                let crumb = buildBreadcrumb()
+                if !crumb.isEmpty {
+                    Section {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Effective Profile")
+                                .font(.caption2).fontWeight(.semibold)
+                                .foregroundStyle(.tertiary)
+                                .textCase(.uppercase).tracking(0.5)
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.triangle.branch")
+                                    .font(.caption2).foregroundStyle(.secondary)
+                                Text(crumb).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 6, leading: 16, bottom: 4, trailing: 16))
+                }
+                
                 if hasAnyOverrides { activeOverridesSummary }
                 connectionSection
                 displaySection
@@ -62,30 +80,6 @@ struct ConnectionSheetView: View {
             .frame(width: 490, height: 660)
             .onAppear { loadExistingValues() }
             .onChange(of: patch) { _, _ in hasAnyOverrides = !patch.isEmpty }
-        }
-    }
-
-    // MARK: - Breadcrumb
-
-    @ViewBuilder
-    private var profileBreadcrumb: some View {
-        let crumb = buildBreadcrumb()
-        if !crumb.isEmpty {
-            Section {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Effective Profile")
-                        .font(.caption2).fontWeight(.semibold)
-                        .foregroundStyle(.tertiary)
-                        .textCase(.uppercase).tracking(0.5)
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.triangle.branch")
-                            .font(.caption2).foregroundStyle(.secondary)
-                        Text(crumb).font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .listRowBackground(Color.clear)
-            .listRowInsets(.init(top: 6, leading: 16, bottom: 4, trailing: 16))
         }
     }
 
@@ -125,7 +119,7 @@ struct ConnectionSheetView: View {
     // MARK: - Section 1: Connection
 
     private var connectionSection: some View {
-        Section {
+        Section("Connection") {
             TextField("Name", text: $name)
             TextField("Host (IP or FQDN)", text: $host)
             TextField("Username", text: $username)
@@ -145,8 +139,6 @@ struct ConnectionSheetView: View {
                 onOverride: { patch.port = inherited.port },
                 onReset: { patch.port = nil }
             )
-        } header: {
-            Text("Connection")
         }
     }
 
