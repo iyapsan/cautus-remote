@@ -49,7 +49,7 @@ struct SidebarView: View {
                             ConnectionRow(connection: connection)
                         }
                     } header: {
-                        Label("Connections", systemImage: "server.rack")
+                        ConnectionsSectionHeader()
                     }
                     .dropDestination(for: ConnectionTransfer.self) { transfers, _ in
                         let connectionIds = Set(appState.connectionService.allConnections.map(\.id))
@@ -518,6 +518,7 @@ struct TagRow: View {
 
 // MARK: - Color Hex Extension
 
+
 extension Color {
     init?(hex: String) {
         let hex = hex.trimmingCharacters(in: .alphanumerics.inverted)
@@ -529,3 +530,48 @@ extension Color {
         self.init(red: r, green: g, blue: b)
     }
 }
+
+// MARK: - Connections Section Header
+
+/// Custom section header for "Connections" that exposes "Edit Global Defaults…".
+///
+/// Design: label on left, subtle sliders icon on right — visible on hover only.
+/// Semantically correct: the Connections scope *is* where global defaults live.
+private struct ConnectionsSectionHeader: View {
+    @Environment(AppState.self) private var appState
+    @State private var isHovering = false
+
+    var body: some View {
+        @Bindable var state = appState
+
+        HStack(spacing: 0) {
+            Label("Connections", systemImage: "server.rack")
+            Spacer()
+            Button {
+                appState.isShowingGlobalDefaultsSheet = true
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.caption)
+                    .foregroundStyle(isHovering ? Color.accentColor : .clear)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Edit Global Defaults…")
+            .onHover { isHovering = $0 }
+        }
+        .onHover { isHovering = $0 }
+        .contentShape(Rectangle())
+        // Context menu as secondary entry point
+        .contextMenu {
+            Button {
+                appState.isShowingGlobalDefaultsSheet = true
+            } label: {
+                Label("Edit Global Defaults…", systemImage: "slider.horizontal.3")
+            }
+        }
+        .sheet(isPresented: $state.isShowingGlobalDefaultsSheet) {
+            GlobalDefaultsSheetView()
+        }
+    }
+}
+

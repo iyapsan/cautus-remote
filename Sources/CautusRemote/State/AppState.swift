@@ -26,6 +26,32 @@ final class AppState {
     var editingConnection: Connection?
     var toastMessage: ToastMessage?
 
+    // MARK: - Global RDP Defaults
+
+    /// App-wide baseline configuration.
+    /// Persisted as JSON in UserDefaults — avoids SwiftData schema changes.
+    /// Loaded once at startup; all resolvers get this passed explicitly.
+    var globalRDPDefaults: RDPResolvedConfig {
+        get { Self.loadGlobalDefaults() }
+        set { Self.saveGlobalDefaults(newValue) }
+    }
+
+    var isShowingGlobalDefaultsSheet = false
+
+    private static let globalDefaultsKey = "com.cautus.globalRDPDefaults"
+
+    private static func loadGlobalDefaults() -> RDPResolvedConfig {
+        guard let data = UserDefaults.standard.data(forKey: globalDefaultsKey),
+              let config = try? JSONDecoder().decode(RDPResolvedConfig.self, from: data)
+        else { return .global }
+        return config.validated()
+    }
+
+    private static func saveGlobalDefaults(_ config: RDPResolvedConfig) {
+        let data = try? JSONEncoder().encode(config.validated())
+        UserDefaults.standard.set(data, forKey: globalDefaultsKey)
+    }
+
     // Folder actions (shared so FolderRow context menus and SidebarView alerts don't conflict)
     var folderActionTarget: Folder?
     var isShowingNewFolderAlert = false
