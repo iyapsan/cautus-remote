@@ -137,6 +137,11 @@ struct SidebarView: View {
                 appState.folderActionTarget = nil
             }
         }
+        // Global Defaults sheet — hoisted here so it's always in the view hierarchy.
+        // Do NOT put this inside a List section header; sheet modifiers are unreliable there.
+        .sheet(isPresented: $state.isShowingGlobalDefaultsSheet) {
+            GlobalDefaultsSheetView()
+        }
     }
 
     /// Merge dragged transfer IDs with the current multi-selection.
@@ -535,15 +540,14 @@ extension Color {
 
 /// Custom section header for "Connections" that exposes "Edit Global Defaults…".
 ///
-/// Design: label on left, subtle sliders icon on right — visible on hover only.
-/// Semantically correct: the Connections scope *is* where global defaults live.
+/// Design: label on left, subtle sliders icon on right — always visible at low opacity,
+/// accent color on hover for clear affordance.
+/// The sheet is NOT presented here — it lives in SidebarView.body for reliability.
 private struct ConnectionsSectionHeader: View {
     @Environment(AppState.self) private var appState
     @State private var isHovering = false
 
     var body: some View {
-        @Bindable var state = appState
-
         HStack(spacing: 0) {
             Label("Connections", systemImage: "server.rack")
             Spacer()
@@ -556,21 +560,17 @@ private struct ConnectionsSectionHeader: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Edit Global Defaults…")
+            .help("Edit Global Defaults\u{2026}")
             .onHover { isHovering = $0 }
         }
         .onHover { isHovering = $0 }
         .contentShape(Rectangle())
-        // Context menu as secondary entry point
         .contextMenu {
             Button {
                 appState.isShowingGlobalDefaultsSheet = true
             } label: {
-                Label("Edit Global Defaults…", systemImage: "slider.horizontal.3")
+                Label("Edit Global Defaults\u{2026}", systemImage: "slider.horizontal.3")
             }
-        }
-        .sheet(isPresented: $state.isShowingGlobalDefaultsSheet) {
-            GlobalDefaultsSheetView()
         }
     }
 }
