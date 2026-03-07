@@ -7,6 +7,7 @@ import CautusRDP
 /// Includes a search field at the top.
 struct SidebarView: View {
     @Environment(AppState.self) private var appState
+    @EnvironmentObject private var windowModel: MainWindowViewModel
 
     var body: some View {
         @Bindable var sidebar = appState.sidebar
@@ -97,6 +98,26 @@ struct SidebarView: View {
             }
         }
         .frame(minWidth: Layout.sidebarMinWidth, maxWidth: Layout.sidebarMaxWidth)
+        .onChange(of: sidebar.selectedConnectionIds) { _, newSelection in
+            if let firstID = newSelection.first {
+                // Determine if it's a folder or connection
+                if appState.connectionService.allFoldersFlattened().contains(where: { $0.folder.id == firstID }) {
+                    windowModel.inspectorSelection = .folder(firstID)
+                    windowModel.mainContentSelection = .folder(firstID)
+                    windowModel.inspectorVisible = true
+                } else if appState.connectionService.allConnections.contains(where: { $0.id == firstID }) {
+                    windowModel.inspectorSelection = .connection(firstID)
+                    windowModel.mainContentSelection = .connection(firstID)
+                    windowModel.inspectorVisible = true
+                } else {
+                    windowModel.inspectorSelection = .none
+                    windowModel.mainContentSelection = .welcome
+                }
+            } else {
+                windowModel.inspectorSelection = .none
+                windowModel.mainContentSelection = .welcome
+            }
+        }
         // Double-click to connect: single event monitor checks selected connection
         .background {
             SidebarDoubleClickMonitor(appState: appState)
@@ -182,8 +203,13 @@ struct SidebarDoubleClickMonitor: NSViewRepresentable {
             super.viewDidMoveToWindow()
             if window != nil && monitor == nil {
                 monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+                    guard let self = self else { return event }
                     if event.clickCount == 2 {
-                        self?.handleDoubleClick()
+                        let pointInWindow = event.locationInWindow
+                        let pointInView = self.convert(pointInWindow, from: nil)
+                        if self.bounds.contains(pointInView) {
+                            self.handleDoubleClick()
+                        }
                     }
                     return event // Always pass through
                 }
@@ -331,10 +357,6 @@ struct ConnectionRow: View {
             }
 
             Divider()
-            Button("Edit...") {
-                appState.editingConnection = connection
-                appState.isShowingConnectionSheet = true
-            }
             Button(connection.isFavorite ? "Unfavorite" : "Favorite") {
                 try? appState.connectionService.toggleFavorite(connection)
             }
@@ -380,7 +402,6 @@ struct FolderRow: View {
     let folder: Folder
 
     @Environment(AppState.self) private var appState
-    @State private var folderForRDPDefaults: Folder? = nil
 
     var body: some View {
         // Access dataVersion to register observation dependency — when loadAll()
@@ -404,12 +425,6 @@ struct FolderRow: View {
                     .foregroundStyle(.secondary)
             }
             .contextMenu {
-                Button {
-                    folderForRDPDefaults = folder
-                } label: {
-                    Label("Edit RDP Defaults…", systemImage: "slider.horizontal.3")
-                }
-                Divider()
                 Button {
                     appState.folderActionTarget = folder
                     appState.folderAlertText = folder.name
@@ -441,9 +456,6 @@ struct FolderRow: View {
                 }
             }
             return !idsToMove.isEmpty
-        }
-        .sheet(item: $folderForRDPDefaults) { targetFolder in
-            FolderDefaultsSheetView(folder: targetFolder)
         }
     }
 }
@@ -545,14 +557,18 @@ extension Color {
 /// The sheet is NOT presented here — it lives in SidebarView.body for reliability.
 private struct ConnectionsSectionHeader: View {
     @Environment(AppState.self) private var appState
+    @EnvironmentObject private var windowModel: MainWindowViewModel
     @State private var isHovering = false
 
     var body: some View {
         HStack(spacing: 0) {
             Label("Connections", systemImage: "server.rack")
             Spacer()
+            // Always set inspectorSelection since this is the global root
             Button {
-                appState.isShowingGlobalDefaultsSheet = true
+                windowModel.inspectorVisible = true
+                windowModel.inspectorSelection = .globalDefaults
+                windowModel.mainContentSelection = .welcome
             } label: {
                 Image(systemName: "slider.horizontal.3")
                     .font(.caption)
@@ -567,7 +583,9 @@ private struct ConnectionsSectionHeader: View {
         .contentShape(Rectangle())
         .contextMenu {
             Button {
-                appState.isShowingGlobalDefaultsSheet = true
+                windowModel.inspectorVisible = true
+                windowModel.inspectorSelection = .globalDefaults
+                windowModel.mainContentSelection = .welcome
             } label: {
                 Label("Edit Global Defaults\u{2026}", systemImage: "slider.horizontal.3")
             }

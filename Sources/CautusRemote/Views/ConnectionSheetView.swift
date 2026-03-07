@@ -127,7 +127,6 @@ struct ConnectionSheetView: View {
 
             // Port — String binding avoids comma formatting (3389, not 3,389)
             OverridableRow("Port",
-                effectiveDisplay: "\(effective.port)",
                 source: patch.port != nil ? .connection : inheritedSource,
                 isOverridden: patch.port != nil,
                 editor: {
@@ -147,7 +146,6 @@ struct ConnectionSheetView: View {
     private var displaySection: some View {
         Section("Display") {
             OverridableRow("Scaling",
-                effectiveDisplay: effective.scaling.displayName,
                 source: patch.scaling != nil ? .connection : inheritedSource,
                 isOverridden: patch.scaling != nil,
                 editor: {
@@ -163,7 +161,6 @@ struct ConnectionSheetView: View {
             )
 
             OverridableRow("Auto Resize Display",
-                effectiveDisplay: effective.dynamicResolution ? "Enabled" : "Disabled",
                 source: patch.dynamicResolution != nil ? .connection : inheritedSource,
                 isOverridden: patch.dynamicResolution != nil,
                 editor: {
@@ -177,7 +174,6 @@ struct ConnectionSheetView: View {
             )
 
             OverridableRow("Color Depth",
-                effectiveDisplay: effective.colorDepth.displayName,
                 source: patch.colorDepth != nil ? .connection : inheritedSource,
                 isOverridden: patch.colorDepth != nil,
                 editor: {
@@ -199,7 +195,6 @@ struct ConnectionSheetView: View {
     private var securitySection: some View {
         Section("Security") {
             OverridableRow("Require NLA",
-                effectiveDisplay: effective.nlaRequired ? "Required" : "Not required",
                 source: patch.nlaRequired != nil ? .connection : inheritedSource,
                 isOverridden: patch.nlaRequired != nil,
                 editor: {
@@ -232,7 +227,6 @@ struct ConnectionSheetView: View {
                 TextField("Gateway Host", text: $gatewayUrl)
 
                 OverridableRow("Gateway Mode",
-                    effectiveDisplay: effective.gatewayMode.displayName,
                     source: patch.gatewayMode != nil ? .connection : inheritedSource,
                     isOverridden: patch.gatewayMode != nil,
                     editor: {
@@ -248,7 +242,6 @@ struct ConnectionSheetView: View {
                 )
 
                 OverridableRow("Bypass Local Addresses",
-                    effectiveDisplay: effective.gatewayBypassLocal ? "On" : "Off",
                     source: patch.gatewayBypassLocal != nil ? .connection : inheritedSource,
                     isOverridden: patch.gatewayBypassLocal != nil,
                     editor: {
@@ -274,7 +267,6 @@ struct ConnectionSheetView: View {
     private var clipboardSection: some View {
         Section("Clipboard") {
             OverridableRow("Clipboard Sharing",
-                effectiveDisplay: effective.clipboardEnabled ? "Enabled" : "Disabled",
                 source: patch.clipboardEnabled != nil ? .connection : inheritedSource,
                 isOverridden: patch.clipboardEnabled != nil,
                 editor: {
@@ -294,7 +286,6 @@ struct ConnectionSheetView: View {
     private var redirectionSection: some View {
         Section("Redirection") {
             OverridableRow("Audio",
-                effectiveDisplay: effective.audioEnabled ? "Enabled" : "Disabled",
                 source: patch.audioEnabled != nil ? .connection : inheritedSource,
                 isOverridden: patch.audioEnabled != nil,
                 editor: {
@@ -308,7 +299,6 @@ struct ConnectionSheetView: View {
             )
             
             OverridableRow("Drive Redirection",
-                effectiveDisplay: effective.driveRedirectionEnabled ? "Enabled" : "Disabled",
                 source: patch.driveRedirectionEnabled != nil ? .connection : inheritedSource,
                 isOverridden: patch.driveRedirectionEnabled != nil,
                 editor: {
@@ -328,7 +318,6 @@ struct ConnectionSheetView: View {
     private var connectionBehaviorSection: some View {
         Section("Connection Behavior") {
             OverridableRow("Reconnect Attempts",
-                effectiveDisplay: "\(effective.reconnectAttempts)",
                 source: patch.reconnectAttempts != nil ? .connection : inheritedSource,
                 isOverridden: patch.reconnectAttempts != nil,
                 editor: {

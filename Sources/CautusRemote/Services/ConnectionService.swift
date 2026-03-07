@@ -35,6 +35,16 @@ final class ConnectionService {
         self.repository = repository
         self.keychainService = keychainService
     }
+    
+    // MARK: - Direct Lookups
+    
+    func connection(_ id: UUID) -> Connection? {
+        allConnections.first { $0.id == id }
+    }
+    
+    func folder(_ id: UUID) -> Folder? {
+        allFoldersFlattened().first { $0.folder.id == id }?.folder
+    }
 
     // MARK: - Data Loading
 

@@ -6,6 +6,7 @@ import SwiftUI
 /// Toolbar contains sidebar toggle, command palette trigger, and new connection button.
 struct MainWindowView: View {
     @Environment(AppState.self) private var appState
+    @StateObject private var windowModel = MainWindowViewModel()
 
     var body: some View {
         @Bindable var appState = appState
@@ -27,15 +28,20 @@ struct MainWindowView: View {
                     }
                 }
         } detail: {
-            VStack(spacing: 0) {
-                if !appState.workspace.isEmpty {
-                    TabBarView()
-                    WorkspaceView()
-                } else {
-                    EmptyStateView()
+            HStack(spacing: 0) {
+                MainContentRootView()
+                    .environmentObject(windowModel)
+                    .background(Color(NSColor.controlBackgroundColor))
+                
+                if windowModel.inspectorVisible {
+                    Divider()
+                    InspectorRootView()
+                        .frame(width: 320)
+                        .background(Color(NSColor.windowBackgroundColor))
                 }
             }
         }
+        .environmentObject(windowModel)
         .navigationSplitViewStyle(.balanced)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
