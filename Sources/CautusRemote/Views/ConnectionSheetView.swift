@@ -400,8 +400,13 @@ struct ConnectionSheetView: View {
                 ignoreCertificateErrors: ignoreCertificateErrors
             )
             c.rdpPatch = patch.isEmpty ? nil : patch
+            if let folderId = appState.selectedFolderIdForNewConnection,
+               let folder = appState.connectionService.folder(folderId) {
+                c.folder = folder
+            }
             modelContext.insert(c)
             target = c
+            appState.newlyCreatedConnectionId = target.id
         }
 
         if !rawPasswordInput.isEmpty {

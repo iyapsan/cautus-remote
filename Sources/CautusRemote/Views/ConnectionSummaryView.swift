@@ -54,16 +54,18 @@ struct ConnectionSummaryView: View {
             
             // Primary Actions
             HStack(spacing: 16) {
-                Button {
-                    Task { await openConnection() }
-                } label: {
-                    Label("Connect", systemImage: "play.fill")
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 4)
+                if canShowConnect {
+                    Button {
+                        Task { await openConnection() }
+                    } label: {
+                        Label("Connect", systemImage: "play.fill")
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                
+
                 Button {
                     let newName = "\(connection.name) copy"
                     let duplicate = Connection(
@@ -157,8 +159,17 @@ struct ConnectionSummaryView: View {
         .padding(.top, 60)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
-    
-    // Extracted connection logic to avoid duplication
+
+    private var canShowConnect: Bool {
+        guard let session = appState.sessionManager.sessions[connection.id] else { return true }
+        switch session.state {
+        case .connected, .connecting, .reconnecting(_, _):
+            return false
+        case .idle, .disconnected:
+            return true
+        }
+    }
+
     private func openConnection() async {
         if let existingTab = appState.workspace.tabs.first(where: { $0.connectionId == connection.id }) {
             appState.workspace.activeTabId = existingTab.id

@@ -111,11 +111,14 @@ final class ConnectionService {
         try loadAll()
     }
 
-    func createFolder(name: String, parent: Folder? = nil) throws {
+    /// Creates a folder and returns it so the UI can select it and focus the inspector.
+    @discardableResult
+    func createFolder(name: String, parent: Folder? = nil) throws -> Folder {
         let folder = Folder(name: name, parent: parent)
         folder.sortOrder = (parent?.subfolders.count ?? rootFolders.count)
         try repository.save(folder)
         try loadAll()
+        return folder
     }
 
     func moveConnection(_ connection: Connection, to folder: Folder?) throws {

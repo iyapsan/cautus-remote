@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import CautusRDP
 
 /// Inspector view for Connection properties and overrides.
 ///
@@ -69,6 +70,9 @@ struct ConnectionInspectorView: View {
                 .background(Color(UIColor.windowBackground))
                 #endif
             }
+	    
+	    Divider()
+	    
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: 8) {
@@ -350,14 +354,25 @@ struct ConnectionInspectorView: View {
             // ── Connect Action (Sticky Bottom) ──────────────────────────────
             VStack(spacing: 0) {
                 Divider()
-                Button {
-                    Task { await openConnection() } // Handled asynchronously natively in view
-                } label: {
-                    Text("Connect")
-                        .fontWeight(.medium)
-                        .frame(maxWidth: .infinity)
+                Group {
+                    if sessionState == .connected {
+                        Button("Disconnect") {
+                            Task { await disconnectCurrentSession() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                    } else if isConnectingState(sessionState) {
+                        Button("Connecting…") {}
+                            .buttonStyle(.borderedProminent)
+                            .disabled(true)
+                    } else {
+                        Button("Connect") {
+                            Task { await connectCurrentSession() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
                 }
-                .buttonStyle(.borderedProminent)
+                .fontWeight(.medium)
+                .frame(maxWidth: .infinity)
                 .controlSize(.large)
                 .padding()
             }
@@ -370,6 +385,19 @@ struct ConnectionInspectorView: View {
     // MARK: - Computed Helpers
 
     private var effective: RDPResolvedConfig { inherited.applying(patch) }
+
+    private var sessionState: RDPConnectionState {
+        appState.sessionManager.sessions[connection.id]?.state ?? .idle
+    }
+
+    private func isConnectingState(_ state: RDPConnectionState) -> Bool {
+        switch state {
+        case .connecting, .reconnecting(_, _):
+            return true
+        default:
+            return false
+        }
+    }
     
     private var inheritedSource: OverrideSource {
         connection.folder.map { .folder(name: $0.name) } ?? .global
@@ -466,6 +494,21 @@ struct ConnectionInspectorView: View {
                 message: error.localizedDescription,
                 style: .error
             )
+        }
+    }
+
+    private func connectCurrentSession() async {
+        await openConnection()
+    }
+
+    private func disconnectCurrentSession() async {
+        // SessionManager uses connection.id as the session key.
+        await appState.sessionManager.close(sessionId: connection.id)
+
+        // Close any associated tab(s) for this connection.
+        let tabsToClose = appState.workspace.tabs.filter { $0.connectionId == connection.id }
+        for tab in tabsToClose {
+            appState.workspace.closeTab(id: tab.id)
         }
     }
 }

@@ -37,10 +37,9 @@ struct FolderSummaryView: View {
                 .buttonStyle(.bordered)
                 
                 if !appState.connectionService.connectionsInFolder(folder).isEmpty {
-                    Button("Connect All") {
-                        // Action implemented later
-                    }
-                    .buttonStyle(.borderedProminent)
+                    Button("Connect All") {}
+                        .buttonStyle(.borderedProminent)
+                        .disabled(true)
                 }
             }
             

@@ -11,6 +11,7 @@ struct TabBarView: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 0) {
+                BrowserTabItemView()
                 ForEach(appState.workspace.tabs) { tab in
                     TabItemView(tab: tab)
                 }
@@ -60,19 +61,18 @@ struct TabItemView: View {
                 .lineLimit(1)
                 .foregroundStyle(isActive ? .primary : .secondary)
 
-            // Close button
-            Button {
-                Task {
-                    await appState.sessionManager.close(sessionId: tab.sessionId)
+            // Close button (does NOT end sessions; session lifecycle is controlled from the inspector)
+            if canCloseTab {
+                Button {
+                    appState.workspace.closeTab(id: tab.id)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.secondary)
                 }
-                appState.workspace.closeTab(id: tab.id)
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.secondary)
+                .buttonStyle(.plain)
+                .opacity(isActive ? 0.7 : 0.3)
             }
-            .buttonStyle(.plain)
-            .opacity(isActive ? 0.7 : 0.3)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
@@ -86,6 +86,45 @@ struct TabItemView: View {
         .contentShape(Rectangle())
         .onTapGesture {
             appState.workspace.activeTabId = tab.id
+        }
+    }
+
+    private var canCloseTab: Bool {
+        switch sessionState {
+        case .connected, .connecting, .reconnecting(_, _):
+            return false
+        case .idle, .disconnected:
+            return true
+        }
+    }
+}
+
+private struct BrowserTabItemView: View {
+    @Environment(AppState.self) private var appState
+
+    private var isActive: Bool {
+        appState.workspace.activeTabId == nil
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("Browser")
+                .font(.system(size: 11, weight: isActive ? .semibold : .regular))
+                .lineLimit(1)
+                .foregroundStyle(isActive ? .primary : .secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background {
+            if isActive {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(.background)
+                    .shadow(color: .black.opacity(0.1), radius: 1, y: 1)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            appState.workspace.activeTabId = nil
         }
     }
 }

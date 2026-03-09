@@ -24,6 +24,10 @@ final class AppState {
 
     var isShowingConnectionSheet = false
     var editingConnection: Connection?
+    /// When non-nil, the new connection created from the sheet will be assigned to this folder (overrides sidebar selection).
+    var connectionCreationParentFolderId: UUID?
+    /// Set by ConnectionSheetView when saving a new connection so the main window can select it and focus the inspector on dismiss.
+    var newlyCreatedConnectionId: UUID?
     var toastMessage: ToastMessage?
 
     // MARK: - Global RDP Defaults
@@ -71,10 +75,17 @@ final class AppState {
     }
 
     /// Returns the ID of a folder currently selected in the sidebar, if any.
-    /// Used to pre-fill the folder field when creating a new connection.
+    /// Used to pre-fill the folder when creating a new connection (unless connectionCreationParentFolderId is set).
     var selectedFolderIdForNewConnection: UUID? {
+        if let overrideId = connectionCreationParentFolderId { return overrideId }
         let folderIds = Set(connectionService.allFoldersFlattened().map(\.folder.id))
         return sidebar.selectedConnectionIds.first(where: { folderIds.contains($0) })
+    }
+
+    /// Folder to create new items inside (selected folder or nil for root). Used by New Folder and New Connection flows.
+    var selectedFolderForCreation: Folder? {
+        guard let id = selectedFolderIdForNewConnection else { return nil }
+        return connectionService.folder(id)
     }
 }
 

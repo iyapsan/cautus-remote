@@ -13,18 +13,8 @@ struct SidebarView: View {
         @Bindable var sidebar = appState.sidebar
         @Bindable var state = appState
 
-        let isSearching = !sidebar.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty
-
         VStack(spacing: 0) {
-            // Search field — always visible
-            TextField("Search connections...", text: $sidebar.searchQuery)
-                .textFieldStyle(.roundedBorder)
-                .controlSize(.small)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-
             ZStack {
-                // Main tree view — always rendered (stable structure for NSOutlineView)
                 List(selection: $sidebar.selectedConnectionIds) {
                     // Favorites
                     if !appState.connectionService.favorites.isEmpty {
@@ -89,12 +79,6 @@ struct SidebarView: View {
                 }
                 .listStyle(.sidebar)
                 .transaction { $0.animation = nil }
-                .opacity(isSearching ? 0 : 1)
-
-                // Search results overlay
-                if isSearching {
-                    SearchResultsView(query: sidebar.searchQuery)
-                }
             }
         }
         .frame(minWidth: Layout.sidebarMinWidth, maxWidth: Layout.sidebarMaxWidth)
@@ -103,19 +87,21 @@ struct SidebarView: View {
                 // Determine if it's a folder or connection
                 if appState.connectionService.allFoldersFlattened().contains(where: { $0.folder.id == firstID }) {
                     windowModel.inspectorSelection = .folder(firstID)
-                    windowModel.mainContentSelection = .folder(firstID)
+                    windowModel.browserSelection = .folder(firstID)
+                    appState.workspace.activeTabId = nil
                     windowModel.inspectorVisible = true
                 } else if appState.connectionService.allConnections.contains(where: { $0.id == firstID }) {
                     windowModel.inspectorSelection = .connection(firstID)
-                    windowModel.mainContentSelection = .connection(firstID)
+                    windowModel.browserSelection = .connection(firstID)
+                    appState.workspace.activeTabId = nil
                     windowModel.inspectorVisible = true
                 } else {
                     windowModel.inspectorSelection = .none
-                    windowModel.mainContentSelection = .welcome
+                    windowModel.browserSelection = .welcome
                 }
             } else {
                 windowModel.inspectorSelection = .none
-                windowModel.mainContentSelection = .welcome
+                windowModel.browserSelection = .welcome
             }
         }
         // Double-click to connect: single event monitor checks selected connection
@@ -128,10 +114,16 @@ struct SidebarView: View {
             Button("Create") {
                 let name = appState.folderAlertText.trimmingCharacters(in: .whitespaces)
                 guard !name.isEmpty else { return }
-                try? appState.connectionService.createFolder(
+                if let created = try? appState.connectionService.createFolder(
                     name: name,
                     parent: appState.folderActionTarget
-                )
+                ) {
+                    appState.sidebar.selectedConnectionIds = [created.id]
+                    windowModel.browserSelection = .folder(created.id)
+                    appState.workspace.activeTabId = nil
+                    windowModel.inspectorVisible = true
+                    windowModel.inspectorSelection = .folder(created.id)
+                }
                 appState.folderActionTarget = nil
             }
             Button("Cancel", role: .cancel) {
@@ -325,13 +317,6 @@ struct ConnectionRow: View {
             }
         }
         .contextMenu {
-            Button("Connect") {
-                Task {
-                    await openConnection(connection)
-                }
-            }
-            Divider()
-
             // Move to folder submenu
             Menu("Move to Folder") {
                 let folders = appState.connectionService.allFoldersFlattened()
@@ -427,23 +412,30 @@ struct FolderRow: View {
             .contextMenu {
                 Button {
                     appState.folderActionTarget = folder
-                    appState.folderAlertText = folder.name
-                    appState.isShowingRenameFolderAlert = true
-                } label: {
-                    Label("Rename Folder", systemImage: "pencil")
-                }
-                Button(role: .destructive) {
-                    try? appState.connectionService.deleteFolder(folder)
-                } label: {
-                    Label("Delete Folder", systemImage: "trash")
-                }
-                Divider()
-                Button {
-                    appState.folderActionTarget = folder
                     appState.folderAlertText = ""
                     appState.isShowingNewFolderAlert = true
                 } label: {
                     Label("New Folder", systemImage: "folder.badge.plus")
+                }
+                Menu("New Connection") {
+                    Button("New RDP Connection") {
+                        appState.connectionCreationParentFolderId = folder.id
+                        appState.editingConnection = nil
+                        appState.isShowingConnectionSheet = true
+                    }
+                    Button("New VNC Connection") { }
+                        .disabled(true)
+                    Button("New SSH Connection") { }
+                        .disabled(true)
+                }
+                Divider()
+                Button("Rename") {
+                    appState.folderActionTarget = folder
+                    appState.folderAlertText = folder.name
+                    appState.isShowingRenameFolderAlert = true
+                }
+                Button("Delete", role: .destructive) {
+                    try? appState.connectionService.deleteFolder(folder)
                 }
             }
         }
@@ -568,7 +560,7 @@ private struct ConnectionsSectionHeader: View {
             Button {
                 windowModel.inspectorVisible = true
                 windowModel.inspectorSelection = .globalDefaults
-                windowModel.mainContentSelection = .welcome
+                windowModel.browserSelection = .welcome
             } label: {
                 Image(systemName: "slider.horizontal.3")
                     .font(.caption)
@@ -585,7 +577,7 @@ private struct ConnectionsSectionHeader: View {
             Button {
                 windowModel.inspectorVisible = true
                 windowModel.inspectorSelection = .globalDefaults
-                windowModel.mainContentSelection = .welcome
+                windowModel.browserSelection = .welcome
             } label: {
                 Label("Edit Global Defaults\u{2026}", systemImage: "slider.horizontal.3")
             }

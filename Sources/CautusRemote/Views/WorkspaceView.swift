@@ -66,15 +66,6 @@ private struct ConnectionOverlayView: View {
                 Text(session.state.description)
                     .font(.title2)
                     .bold()
-                
-                // Show a Cancel button if we are reconnecting (or trying to connect)
-                if isReconnecting(session.state) {
-                    Button("Cancel Reconnect") {
-                        session.disconnect()
-                    }
-                    .keyboardShortcut(.escape, modifiers: [])
-                    .controlSize(.large)
-                }
             }
             .padding(40)
             .background(Color(NSColor.windowBackgroundColor))
