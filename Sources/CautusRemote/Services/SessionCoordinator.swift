@@ -102,6 +102,18 @@ final class SessionCoordinator {
         }
     }
     
+    public func focusSessionOrBrowse(for connectionId: UUID, openWindow: OpenWindowAction) {
+        if let existingSessionID = sessionIDByConnectionID[connectionId],
+           let existingWindow = sessionWindowsBySessionID[existingSessionID], 
+           existingWindow.isVisible {
+            print("[SessionCoordinator] Sidebar click: Focusing existing window for connection")
+            existingWindow.makeKeyAndOrderFront(nil)
+            selectedTabKind = .session(existingSessionID)
+        } else {
+            openBrowse(openWindow: openWindow)
+        }
+    }
+    
     public func registerWindow(for sessionId: UUID, window: NSWindow) {
         sessionWindowsBySessionID[sessionId] = window
     }

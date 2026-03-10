@@ -143,10 +143,16 @@ struct SidebarView: View {
                     windowModel.inspectorSelection = .folder(firstID)
                     windowModel.browseContentSelection = .folder(firstID)
                     windowModel.inspectorVisible = true
+                    
+                    // User click folder -> Ensure Browse Tab is focused
+                    sessionCoordinator.openBrowse(openWindow: openWindow)
                 } else if appState.connectionService.allConnections.contains(where: { $0.id == firstID }) {
                     windowModel.inspectorSelection = .connection(firstID)
                     windowModel.browseContentSelection = .connection(firstID)
                     windowModel.inspectorVisible = true
+                    
+                    // User click connection -> Focus Session Tab if active, else Browse Tab
+                    sessionCoordinator.focusSessionOrBrowse(for: firstID, openWindow: openWindow)
                 } else {
                     windowModel.inspectorSelection = .none
                     windowModel.browseContentSelection = .welcome
