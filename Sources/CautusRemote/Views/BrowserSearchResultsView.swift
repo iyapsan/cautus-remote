@@ -71,6 +71,8 @@ private struct BrowserSearchConnectionRow: View {
     let connection: Connection
 
     @Environment(AppState.self) private var appState
+    @Environment(SessionCoordinator.self) private var sessionCoordinator
+    @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var windowModel: MainWindowViewModel
 
     private var locationPath: String {
@@ -106,7 +108,7 @@ private struct BrowserSearchConnectionRow: View {
             }
             .contentShape(Rectangle())
             .onTapGesture {
-                windowModel.browserSelection = .connection(connection.id)
+                windowModel.browseContentSelection = .connection(connection.id)
             }
             .onTapGesture(count: 2) {
                 openSession()
@@ -115,29 +117,7 @@ private struct BrowserSearchConnectionRow: View {
     }
 
     private func openSession() {
-        Task { @MainActor in
-            // Focus existing tab if any
-            if let existing = appState.workspace.tabs.first(where: { $0.connectionId == connection.id }) {
-                appState.workspace.activeTabId = existing.id
-                return
-            }
-            do {
-                let sessionId = try await appState.sessionManager.open(connection: connection)
-                let tab = SessionTab(
-                    connectionId: connection.id,
-                    sessionId: sessionId,
-                    title: connection.name
-                )
-                appState.workspace.addTab(tab)
-                try appState.connectionService.markConnected(connection)
-            } catch {
-                appState.toastMessage = ToastMessage(
-                    title: "Connection Failed",
-                    message: error.localizedDescription,
-                    style: .error
-                )
-            }
-        }
+        sessionCoordinator.openSession(for: connection, openWindow: openWindow)
     }
 }
 
@@ -176,7 +156,7 @@ private struct BrowserSearchFolderRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            windowModel.browserSelection = .folder(folder.id)
+            windowModel.browseContentSelection = .folder(folder.id)
         }
     }
 }

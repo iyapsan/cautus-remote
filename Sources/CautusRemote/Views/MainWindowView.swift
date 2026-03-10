@@ -5,7 +5,11 @@ import SwiftUI
 /// Uses `NavigationSplitView` for the sidebar + detail pattern.
 /// Toolbar contains sidebar toggle, command palette trigger, and new connection button.
 struct MainWindowView: View {
+    let tabKind: WindowTabKind
+
     @Environment(AppState.self) private var appState
+    @Environment(SessionCoordinator.self) private var sessionCoordinator
+    @Environment(\.openWindow) private var openWindow
     @StateObject private var windowModel = MainWindowViewModel()
 
     var body: some View {
@@ -15,11 +19,16 @@ struct MainWindowView: View {
             columnVisibility: $appState.sidebar.columnVisibility
         ) {
             SidebarView()
+                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 400)
         } detail: {
             HStack(spacing: 0) {
-                MainContentRootView()
-                    .environmentObject(windowModel)
-                    .background(Color(NSColor.controlBackgroundColor))
+                switch tabKind {
+                case .browse:
+                    MainContentRootView()
+                        .environmentObject(windowModel)
+                case .session(let sessionId):
+                    WorkspaceView(sessionId: sessionId)
+                }
                 
                 if windowModel.inspectorVisible {
                     Divider()
@@ -79,23 +88,13 @@ struct MainWindowView: View {
                 }
                 .keyboardShortcut("n", modifiers: .command)
                 .help("New (⌘N)")
-
-                if shouldShowToolbarDisconnect, let activeTab = appState.workspace.activeTab {
-                    Button {
-                        Task { await disconnect(tab: activeTab) }
-                    } label: {
-                        Image(systemName: "xmark.circle")
-                    }
-                    .help("Disconnect")
-                }
             }
         }
         .sheet(isPresented: $appState.isShowingConnectionSheet, onDismiss: {
             try? appState.connectionService.loadAll()
             if let id = appState.newlyCreatedConnectionId {
                 appState.sidebar.selectedConnectionIds = [id]
-                windowModel.browserSelection = .connection(id)
-                appState.workspace.activeTabId = nil
+                windowModel.browseContentSelection = .connection(id)
                 windowModel.inspectorVisible = true
                 windowModel.inspectorSelection = .connection(id)
                 appState.newlyCreatedConnectionId = nil
@@ -114,7 +113,11 @@ struct MainWindowView: View {
         .toastContainer()
         .frame(
             minWidth: Layout.minWindowWidth,
-            minHeight: Layout.minWindowHeight
+            idealWidth: 1200,
+            maxWidth: .infinity,
+            minHeight: Layout.minWindowHeight,
+            idealHeight: 800,
+            maxHeight: .infinity
         )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Cautus Remote Main Window")
@@ -125,34 +128,101 @@ struct MainWindowView: View {
                 let selectedIds = appState.sidebar.selectedConnectionIds
                 if let firstID = selectedIds.first {
                     if appState.connectionService.allFoldersFlattened().contains(where: { $0.folder.id == firstID }) {
-                        windowModel.browserSelection = .folder(firstID)
+                        windowModel.browseContentSelection = .folder(firstID)
                     } else if appState.connectionService.allConnections.contains(where: { $0.id == firstID }) {
-                        windowModel.browserSelection = .connection(firstID)
+                        windowModel.browseContentSelection = .connection(firstID)
                     } else {
-                        windowModel.browserSelection = .welcome
+                        windowModel.browseContentSelection = .welcome
                     }
                 } else {
-                    windowModel.browserSelection = .welcome
+                    windowModel.browseContentSelection = .welcome
                 }
             } else {
-                windowModel.browserSelection = .search(trimmed)
-                appState.workspace.activeTabId = nil
+                windowModel.browseContentSelection = .emptyState
+            }
+        }
+        .onChange(of: appState.sidebar.selectedConnectionIds) { oldSelection, newSelection in
+            print("[MainWindowView] Selection changed from \(oldSelection) to \(newSelection)")
+        }
+        .background(WindowTabbingConfigurator(tabKind: tabKind, coordinator: sessionCoordinator))
+        .onAppear {
+            sessionCoordinator.defaultOpenWindowAction = openWindow
+        }
+    }
+
+// MARK: - Native Window Tabbing Configurator
+struct WindowTabbingConfigurator: NSViewRepresentable {
+    let tabKind: WindowTabKind
+    let coordinator: SessionCoordinator
+    
+    func makeNSView(context: Context) -> NSView {
+        let view = TabbingConfigView()
+        view.tabKind = tabKind
+        view.coordinator = coordinator
+        return view
+    }
+    
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+class TabbingConfigView: NSView {
+    var tabKind: WindowTabKind?
+    var coordinator: SessionCoordinator?
+    private var closeObserver: Any?
+    
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let window = self.window, let tabKind = tabKind else { return }
+        
+        if closeObserver == nil {
+            closeObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.willCloseNotification,
+                object: window,
+                queue: .main
+            ) { [weak coordinator] _ in
+                Task { @MainActor in
+                    if case .session(let sessionId) = tabKind {
+                        coordinator?.sessionDidClose(sessionId: sessionId, openWindow: coordinator?.defaultOpenWindowAction)
+                    } else if case .browse = tabKind {
+                        coordinator?.browseDidClose()
+                    }
+                }
+            }
+        }
+        
+        // Mark this window with our specific tabbing identifier
+        window.tabbingMode = .preferred
+        window.tabbingIdentifier = "CautusRemoteMainTabGroup"
+        NSWindow.allowsAutomaticWindowTabbing = false
+        
+        // Register window with coordinator
+        if case .session(let sessionId) = tabKind {
+            coordinator?.registerWindow(for: sessionId, window: window)
+        } else if case .browse = tabKind {
+            coordinator?.browseTabWindow = window
+        }
+        
+        // Set the window title
+        if case .session(let sessionId) = tabKind {
+            // Coordinator knows best how to disambiguate the title
+            if let connId = coordinator?.sessionIDByConnectionID.first(where: { $0.value == sessionId })?.key,
+               let connection = coordinator?.appState.connectionService.connection(connId) {
+                window.title = coordinator?.title(for: connection) ?? connection.name
+            }
+        } else {
+            window.title = "Browse"
+        }
+        
+        // Find any other existing window with the same identifier
+        if let existingWindow = NSApp.windows.first(where: { 
+            $0 != window && $0.tabbingIdentifier == "CautusRemoteMainTabGroup" && $0.isVisible 
+        }) {
+            // If this window isn't already tabbed with the existing one, force attach it
+            if existingWindow.tabbedWindows?.contains(window) != true {
+                existingWindow.addTabbedWindow(window, ordered: .above)
+                window.makeKeyAndOrderFront(nil)
             }
         }
     }
-
-    private var shouldShowToolbarDisconnect: Bool {
-        guard !windowModel.inspectorVisible, let tab = appState.workspace.activeTab else { return false }
-        switch appState.sessionManager.state(for: tab.sessionId) {
-        case .connected, .connecting, .reconnecting(_, _):
-            return true
-        case .idle, .disconnected:
-            return false
-        }
-    }
-
-    private func disconnect(tab: SessionTab) async {
-        await appState.sessionManager.close(sessionId: tab.sessionId)
-        appState.workspace.closeTab(id: tab.id)
-    }
+}
 }

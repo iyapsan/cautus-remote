@@ -11,7 +11,7 @@ public final class RDPSession: ObservableObject, @unchecked Sendable {
     @Published public private(set) var state: RDPConnectionState = .idle
     @Published public private(set) var stats = CRDPStats()
     
-    let config: RDPConfig
+    public private(set) var config: RDPConfig
     private var context: RDPContext?
     private var isRunning = false
     private var lastPasteboardChangeCount: Int = NSPasteboard.general.changeCount
@@ -23,8 +23,12 @@ public final class RDPSession: ObservableObject, @unchecked Sendable {
     private var reconnectTask: Task<Void, Never>?
     private var generation: UInt64 = 0 // bumps every connect/disconnect
     
-    init(config: RDPConfig) {
+    public init(config: RDPConfig) {
         self.config = config
+    }
+    
+    public func updateConfig(_ newConfig: RDPConfig) {
+        self.config = newConfig
     }
     
     public func connect() async throws {
@@ -40,7 +44,7 @@ public final class RDPSession: ObservableObject, @unchecked Sendable {
         let currentGen = generation
         isRunning = true
         
-        await rebuildContextForReconnect()
+        rebuildContextForReconnect()
         
         guard let _ = self.context else {
             let err = NSError(domain: "CautusRDP", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to allocate RDP context"])
@@ -60,10 +64,25 @@ public final class RDPSession: ObservableObject, @unchecked Sendable {
             state = .connected
             startPolling()
         } else {
-            print("[RDPSession] Connection failed!")
-            let err = NSError(domain: "CautusRDP", code: 2, userInfo: [NSLocalizedDescriptionKey: "Connection failed"])
-            state = .disconnected(err)
-            throw err
+            let lastErrCode = self.context?.getLastError() ?? 0
+            let rdpError = SessionError.fromFreeRDPError(lastErrCode)
+            print("[RDPSession] Connection failed! Code: 0x\(String(format: "%08x", lastErrCode)) -> \(rdpError.localizedDescription)")
+            
+            let isRetryable: Bool
+            switch rdpError {
+            case .connectionCancelled, .hostUnreachable, .tlsError, .unknown:
+                isRetryable = true
+            default:
+                isRetryable = false
+            }
+            
+            if isRetryable && maxReconnectAttempts > 0 {
+                print("[RDPSession] Error is retryable. Entering reconnect loop for Local Network prompts or transient drops.")
+                beginReconnectLoop(reason: "Initial connection failed")
+            } else {
+                state = .disconnected(rdpError)
+                throw rdpError
+            }
         }
     }
     
@@ -99,20 +118,34 @@ public final class RDPSession: ObservableObject, @unchecked Sendable {
     private func tryConnectOnce() async -> Bool {
         guard let ctx = self.context else { return false }
         
+        // Capture strictly on the MainActor to cross isolation boundary securely
+        let cHost = self.config.host
+        let cPort = self.config.port
+        let cUser = self.config.user
+        let cPass = self.config.pass
+        let cGwHost = self.config.gwHost
+        let cGwUser = self.config.gwUser
+        let cGwPass = self.config.gwPass
+        let cGwDomain = self.config.gwDomain
+        let cGwMode = self.config.gwMode
+        let cGwBypassLocal = self.config.gwBypassLocal
+        let cGwUseSameCreds = self.config.gwUseSameCreds
+        let cIgnoreCert = self.config.ignoreCert
+        
         return await Task.detached {
             return ctx.connect(
-                host: self.config.host,
-                port: self.config.port,
-                user: self.config.user,
-                pass: self.config.pass,
-                gwHost: self.config.gwHost,
-                gwUser: self.config.gwUser,
-                gwPass: self.config.gwPass,
-                gatewayAuthDomain: self.config.gwDomain,
-                gatewayMode: self.config.gwMode,
-                gatewayBypassLocal: self.config.gwBypassLocal,
-                gatewayUseSameCredentials: self.config.gwUseSameCreds,
-                ignoreCert: self.config.ignoreCert
+                host: cHost,
+                port: cPort,
+                user: cUser,
+                pass: cPass,
+                gwHost: cGwHost,
+                gwUser: cGwUser,
+                gwPass: cGwPass,
+                gatewayAuthDomain: cGwDomain,
+                gatewayMode: cGwMode,
+                gatewayBypassLocal: cGwBypassLocal,
+                gatewayUseSameCredentials: cGwUseSameCreds,
+                ignoreCert: cIgnoreCert
             )
         }.value
     }
@@ -185,12 +218,12 @@ public final class RDPSession: ObservableObject, @unchecked Sendable {
             while true {
                 if Task.isCancelled { return }
                 
-                let running = await self.isRunning
-                let gen = await self.generation
+                let running = await MainActor.run { self.isRunning }
+                let gen = await MainActor.run { self.generation }
                 if !running || gen != myGen { return }
                 
-                let attempt = await self.reconnectAttempt
-                let maxAtt = await self.maxReconnectAttempts
+                let attempt = await MainActor.run { self.reconnectAttempt }
+                let maxAtt = await MainActor.run { self.maxReconnectAttempts }
                 
                 if attempt >= maxAtt {
                     await MainActor.run {
@@ -258,6 +291,17 @@ public final class RDPSession: ObservableObject, @unchecked Sendable {
         destroyContextIfNeeded()
         state = .disconnected(nil)
     }
+
+    public func fail(with error: Error) {
+        isRunning = false
+        generation &+= 1 // Invalidates any active polling or connecting tasks
+        
+        pollTask?.cancel()
+        reconnectTask?.cancel()
+        
+        destroyContextIfNeeded()
+        state = .disconnected(error)
+    }
     
     public func sendKeyboardInput(flags: UInt16, scancode: UInt16) {
         context?.sendKeyboardInput(flags: flags, scancode: scancode)
@@ -291,7 +335,7 @@ public final class RDPSession: ObservableObject, @unchecked Sendable {
         let subject = (commonName as String?) ?? "Unknown"
 
         var issuerCN: CFString?
-        if let issuerData = SecCertificateCopyNormalizedIssuerSequence(cert) {
+        if SecCertificateCopyNormalizedIssuerSequence(cert) != nil {
             // Simple: just show the raw issuer string via summary
             let issuerCert = SecCertificateCopySubjectSummary(cert)
             issuerCN = issuerCert
@@ -341,7 +385,7 @@ public final class RDPSession: ObservableObject, @unchecked Sendable {
             if let window = NSApp.keyWindow, let contentView = window.contentView {
                 window.makeKey()
                 // Walk the view hierarchy to find the RDPMetalView and make it first responder
-                func findRDPView(_ view: NSView) -> NSView? {
+                @MainActor func findRDPView(_ view: NSView) -> NSView? {
                     if NSStringFromClass(type(of: view)).contains("RDPMetalView") { return view }
                     for sub in view.subviews {
                         if let found = findRDPView(sub) { return found }

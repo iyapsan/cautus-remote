@@ -9,9 +9,15 @@ struct RDPWorkspaceView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> RDPMetalView {
         let device = MTLCreateSystemDefaultDevice()
-        // Initialize at a reasonable default size; MTKView auto-resizes.
-        let mtkView = RDPMetalView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720), device: device)
+        let mtkView = RDPMetalView(frame: .zero, device: device)
         mtkView.session = session
+        
+        // Sever layout constraints so MTKView does not push window out when drawableSize changes
+        mtkView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        mtkView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        mtkView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        mtkView.setContentHuggingPriority(.defaultLow, for: .vertical)
+        
         return mtkView
     }
 

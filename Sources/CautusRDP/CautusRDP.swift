@@ -163,6 +163,11 @@ public class RDPContext: @unchecked Sendable {
         return rdp_get_stats(ctx)
     }
     
+    public func getLastError() -> UInt32 {
+        guard let ctx = ctx else { return 0 }
+        return rdp_get_last_error(ctx)
+    }
+    
     public func getFramebuffer() -> (buffer: UnsafeMutablePointer<UInt8>, width: Int, height: Int, stride: Int)? {
         guard let ctx = ctx else { return nil }
         var bufferPtr: UnsafeMutableRawPointer? = nil

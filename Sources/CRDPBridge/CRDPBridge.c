@@ -372,6 +372,16 @@ static int cb_verify_x509_certificate(freerdp *instance, const BYTE *data,
   return 0; // Default deny
 }
 
+static BOOL cb_authenticate(freerdp *instance, char **username, char **password,
+                            char **domain) {
+  fprintf(
+      stderr,
+      "[CRDPBridge] Suppressing FreeRDP default Mac Authenticate UI dialog.\n");
+  // Always fail authentication here. The main Swift app is responsible for
+  // collecting credentials.
+  return FALSE;
+}
+
 CRDPContextRef rdp_create(void) {
   freerdp *instance = freerdp_new();
   if (!instance) {
@@ -382,6 +392,7 @@ CRDPContextRef rdp_create(void) {
   instance->PostConnect = cb_post_connect;
   instance->PostDisconnect = cb_post_disconnect;
   instance->VerifyX509Certificate = cb_verify_x509_certificate;
+  instance->Authenticate = cb_authenticate;
 
   instance->ContextSize = sizeof(CRDPContextImpl);
 

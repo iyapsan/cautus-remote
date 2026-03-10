@@ -5,11 +5,17 @@ public struct RDPClient {
     
     public init() {}
     
-    /// Asynchronously establishes a connection and returns the live session instance.
+    /// Establishes a connection in the background and returns the live session instance immediately.
     @MainActor
-    public func connect(config: RDPConfig) async throws -> RDPSession {
+    public func connect(config: RDPConfig) -> RDPSession {
         let session = RDPSession(config: config)
-        try await session.connect()
+        Task {
+            do {
+                try await session.connect()
+            } catch {
+                print("[RDPClient] Background connection failed: \(error)")
+            }
+        }
         return session
     }
 }

@@ -9,7 +9,9 @@ struct ConnectionInspectorView: View {
     let connection: Connection
     
     @Environment(AppState.self) private var appState
+    @Environment(SessionCoordinator.self) private var sessionCoordinator
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.openWindow) private var openWindow
     
     // Extracted connection fields (editable)
     @State private var name: String = ""
@@ -354,27 +356,7 @@ struct ConnectionInspectorView: View {
             // ── Connect Action (Sticky Bottom) ──────────────────────────────
             VStack(spacing: 0) {
                 Divider()
-                Group {
-                    if sessionState == .connected {
-                        Button("Disconnect") {
-                            Task { await disconnectCurrentSession() }
-                        }
-                        .buttonStyle(.borderedProminent)
-                    } else if isConnectingState(sessionState) {
-                        Button("Connecting…") {}
-                            .buttonStyle(.borderedProminent)
-                            .disabled(true)
-                    } else {
-                        Button("Connect") {
-                            Task { await connectCurrentSession() }
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                }
-                .fontWeight(.medium)
-                .frame(maxWidth: .infinity)
-                .controlSize(.large)
-                .padding()
+                ConnectionActionButtons(connection: connection)
             }
             .background(Color(NSColor.windowBackgroundColor))
         }
@@ -385,19 +367,6 @@ struct ConnectionInspectorView: View {
     // MARK: - Computed Helpers
 
     private var effective: RDPResolvedConfig { inherited.applying(patch) }
-
-    private var sessionState: RDPConnectionState {
-        appState.sessionManager.sessions[connection.id]?.state ?? .idle
-    }
-
-    private func isConnectingState(_ state: RDPConnectionState) -> Bool {
-        switch state {
-        case .connecting, .reconnecting(_, _):
-            return true
-        default:
-            return false
-        }
-    }
     
     private var inheritedSource: OverrideSource {
         connection.folder.map { .folder(name: $0.name) } ?? .global
@@ -473,42 +442,77 @@ struct ConnectionInspectorView: View {
         appState.toastMessage = ToastMessage(title: "Connection Duplicated", message: copy.name, style: .success)
     }
     
-    private func openConnection() async {
-        if let existingTab = appState.workspace.tabs.first(where: { $0.connectionId == connection.id }) {
-            appState.workspace.activeTabId = existingTab.id
-            return
-        }
+    private func openConnection() {
+        sessionCoordinator.openSession(for: connection, openWindow: openWindow)
+    }
+}
 
-        do {
-            let sessionId = try await appState.sessionManager.open(connection: connection)
-            let tab = SessionTab(
-                connectionId: connection.id,
-                sessionId: sessionId,
-                title: connection.name
+/// Explicit subview to correctly observe `RDPSession` (`ObservableObject`) within the iOS 17 `@Observable` macro environment.
+struct ConnectionActionButtons: View {
+    let connection: Connection
+    @Environment(AppState.self) private var appState
+    @Environment(SessionCoordinator.self) private var sessionCoordinator
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        if let session = appState.sessionManager.sessions[connection.id] {
+            ActiveSessionActionButton(
+                connection: connection,
+                session: session,
+                sessionCoordinator: sessionCoordinator,
+                openWindow: openWindow
             )
-            appState.workspace.addTab(tab)
-            try appState.connectionService.markConnected(connection)
-        } catch {
-            appState.toastMessage = ToastMessage(
-                title: "Connection Failed",
-                message: error.localizedDescription,
-                style: .error
-            )
+        } else {
+            Button("Connect") {
+                sessionCoordinator.openSession(for: connection, openWindow: openWindow)
+            }
+            .buttonStyle(.borderedProminent)
+            .fontWeight(.medium)
+            .frame(maxWidth: .infinity)
+            .controlSize(.large)
+            .padding()
         }
     }
+}
 
-    private func connectCurrentSession() async {
-        await openConnection()
+private struct ActiveSessionActionButton: View {
+    let connection: Connection
+    @ObservedObject var session: RDPSession
+    let sessionCoordinator: SessionCoordinator
+    let openWindow: OpenWindowAction
+
+    var body: some View {
+        Group {
+            if session.state == .connected {
+                Button("Disconnect") {
+                    if let sessionId = sessionCoordinator.sessionIDByConnectionID[connection.id] {
+                        sessionCoordinator.sessionDidClose(sessionId: sessionId)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+            } else if isConnectingState(session.state) {
+                Button("Connecting…") {}
+                    .buttonStyle(.borderedProminent)
+                    .disabled(true)
+            } else {
+                Button("Connect") {
+                    sessionCoordinator.openSession(for: connection, openWindow: openWindow)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .fontWeight(.medium)
+        .frame(maxWidth: .infinity)
+        .controlSize(.large)
+        .padding()
     }
 
-    private func disconnectCurrentSession() async {
-        // SessionManager uses connection.id as the session key.
-        await appState.sessionManager.close(sessionId: connection.id)
-
-        // Close any associated tab(s) for this connection.
-        let tabsToClose = appState.workspace.tabs.filter { $0.connectionId == connection.id }
-        for tab in tabsToClose {
-            appState.workspace.closeTab(id: tab.id)
+    private func isConnectingState(_ state: RDPConnectionState) -> Bool {
+        switch state {
+        case .connecting, .reconnecting(_, _):
+            return true
+        default:
+            return false
         }
     }
 }

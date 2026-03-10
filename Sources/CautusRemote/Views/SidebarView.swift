@@ -7,18 +7,43 @@ import CautusRDP
 /// Includes a search field at the top.
 struct SidebarView: View {
     @Environment(AppState.self) private var appState
+    @Environment(SessionCoordinator.self) private var sessionCoordinator
+    @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var windowModel: MainWindowViewModel
+
+    @State private var allowBindingUpdates = false
 
     var body: some View {
         @Bindable var sidebar = appState.sidebar
         @Bindable var state = appState
 
+        let selectionBinding = Binding<Set<UUID>>(
+            get: { sidebar.selectedConnectionIds },
+            set: { if allowBindingUpdates { sidebar.selectedConnectionIds = $0 } }
+        )
+        let favExpanded = Binding<Bool>(
+            get: { sidebar.isFavoritesExpanded },
+            set: { if allowBindingUpdates { sidebar.isFavoritesExpanded = $0 } }
+        )
+        let allExpanded = Binding<Bool>(
+            get: { sidebar.isAllConnectionsExpanded },
+            set: { if allowBindingUpdates { sidebar.isAllConnectionsExpanded = $0 } }
+        )
+        let tagsExpanded = Binding<Bool>(
+            get: { sidebar.isTagsExpanded },
+            set: { if allowBindingUpdates { sidebar.isTagsExpanded = $0 } }
+        )
+        let recentsExpanded = Binding<Bool>(
+            get: { sidebar.isRecentsExpanded },
+            set: { if allowBindingUpdates { sidebar.isRecentsExpanded = $0 } }
+        )
+
         VStack(spacing: 0) {
             ZStack {
-                List(selection: $sidebar.selectedConnectionIds) {
+                List(selection: selectionBinding) {
                     // Favorites
                     if !appState.connectionService.favorites.isEmpty {
-                        Section(isExpanded: $sidebar.isFavoritesExpanded) {
+                        Section(isExpanded: favExpanded) {
                             ForEach(appState.connectionService.favorites) { connection in
                                 ConnectionRow(connection: connection)
                             }
@@ -29,7 +54,7 @@ struct SidebarView: View {
                     }
 
                     // All Connections (with folders)
-                    Section(isExpanded: $sidebar.isAllConnectionsExpanded) {
+                    Section(isExpanded: allExpanded) {
                         // Root folders
                         ForEach(appState.connectionService.rootFolders) { folder in
                             FolderRow(folder: folder)
@@ -55,7 +80,7 @@ struct SidebarView: View {
 
                     // Tags
                     if !appState.connectionService.allTags.isEmpty {
-                        Section(isExpanded: $sidebar.isTagsExpanded) {
+                        Section(isExpanded: tagsExpanded) {
                             ForEach(appState.connectionService.allTags) { tag in
                                 TagRow(tag: tag)
                             }
@@ -67,7 +92,7 @@ struct SidebarView: View {
 
                     // Recents
                     if !appState.connectionService.recents.isEmpty {
-                        Section(isExpanded: $sidebar.isRecentsExpanded) {
+                        Section(isExpanded: recentsExpanded) {
                             ForEach(appState.connectionService.recents) { connection in
                                 ConnectionRow(connection: connection)
                             }
@@ -79,34 +104,62 @@ struct SidebarView: View {
                 }
                 .listStyle(.sidebar)
                 .transaction { $0.animation = nil }
+                .id(windowModel.listId)
             }
         }
         .frame(minWidth: Layout.sidebarMinWidth, maxWidth: Layout.sidebarMaxWidth)
-        .onChange(of: sidebar.selectedConnectionIds) { _, newSelection in
+        .onAppear {
+            // Force the initial sync into windowModel. The .onChange won't fire if the initial global 
+            // state matches what it was when the window opened.
+            let currentSelection = appState.sidebar.selectedConnectionIds
+            if let firstID = currentSelection.first {
+                if appState.connectionService.allFoldersFlattened().contains(where: { $0.folder.id == firstID }) {
+                    windowModel.inspectorSelection = .folder(firstID)
+                    windowModel.browseContentSelection = .folder(firstID)
+                    windowModel.inspectorVisible = true
+                } else if appState.connectionService.allConnections.contains(where: { $0.id == firstID }) {
+                    windowModel.inspectorSelection = .connection(firstID)
+                    windowModel.browseContentSelection = .connection(firstID)
+                    windowModel.inspectorVisible = true
+                } else {
+                    windowModel.inspectorSelection = .none
+                    windowModel.browseContentSelection = .welcome
+                }
+            } else {
+                windowModel.inspectorSelection = .none
+                windowModel.browseContentSelection = .welcome
+            }
+
+            // Delay accepting binding overwrites to outlast the NSOutlineView 
+            // initialization phase which aggressively writes generic false/empty states back.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                allowBindingUpdates = true
+            }
+        }
+        .onChange(of: sidebar.selectedConnectionIds) { oldSelection, newSelection in
             if let firstID = newSelection.first {
                 // Determine if it's a folder or connection
                 if appState.connectionService.allFoldersFlattened().contains(where: { $0.folder.id == firstID }) {
                     windowModel.inspectorSelection = .folder(firstID)
-                    windowModel.browserSelection = .folder(firstID)
-                    appState.workspace.activeTabId = nil
+                    windowModel.browseContentSelection = .folder(firstID)
                     windowModel.inspectorVisible = true
                 } else if appState.connectionService.allConnections.contains(where: { $0.id == firstID }) {
                     windowModel.inspectorSelection = .connection(firstID)
-                    windowModel.browserSelection = .connection(firstID)
-                    appState.workspace.activeTabId = nil
+                    windowModel.browseContentSelection = .connection(firstID)
                     windowModel.inspectorVisible = true
                 } else {
                     windowModel.inspectorSelection = .none
-                    windowModel.browserSelection = .welcome
+                    windowModel.browseContentSelection = .welcome
                 }
             } else {
                 windowModel.inspectorSelection = .none
-                windowModel.browserSelection = .welcome
+                windowModel.browseContentSelection = .welcome
             }
         }
-        // Double-click to connect: single event monitor checks selected connection
         .background {
-            SidebarDoubleClickMonitor(appState: appState)
+            SidebarDoubleClickMonitor(appState: appState) { connection in
+                openSessionTab(for: connection)
+            }
         }
         // New folder alert
         .alert("New Folder", isPresented: $state.isShowingNewFolderAlert) {
@@ -119,8 +172,7 @@ struct SidebarView: View {
                     parent: appState.folderActionTarget
                 ) {
                     appState.sidebar.selectedConnectionIds = [created.id]
-                    windowModel.browserSelection = .folder(created.id)
-                    appState.workspace.activeTabId = nil
+                    windowModel.browseContentSelection = .folder(created.id)
                     windowModel.inspectorVisible = true
                     windowModel.inspectorSelection = .folder(created.id)
                 }
@@ -170,18 +222,22 @@ struct SidebarView: View {
         }
         return ids.intersection(connectionIds)
     }
+
+    private func openSessionTab(for connection: Connection) {
+        sessionCoordinator.openSession(for: connection, openWindow: openWindow)
+    }
 }
 
 // MARK: - Double-Click Monitor
 
-/// Single AppKit event monitor that detects double-clicks on the sidebar
-/// and connects to the currently selected connection.
 struct SidebarDoubleClickMonitor: NSViewRepresentable {
     let appState: AppState
+    let onDoubleClick: (Connection) -> Void
 
     func makeNSView(context: Context) -> NSView {
         let view = MonitorView()
         view.appState = appState
+        view.onDoubleClick = onDoubleClick
         return view
     }
 
@@ -189,6 +245,7 @@ struct SidebarDoubleClickMonitor: NSViewRepresentable {
 
     class MonitorView: NSView {
         var appState: AppState?
+        var onDoubleClick: ((Connection) -> Void)?
         private var monitor: Any?
 
         override func viewDidMoveToWindow() {
@@ -215,30 +272,7 @@ struct SidebarDoubleClickMonitor: NSViewRepresentable {
             else { return }
 
             NSLog("[SidebarDoubleClickMonitor] user double clicked %@", connection.name)
-            Task { @MainActor in
-                // If a tab already exists for this connection, focus it instead of opening a new one
-                if let existingTab = appState.workspace.tabs.first(where: { $0.connectionId == connection.id }) {
-                    appState.workspace.activeTabId = existingTab.id
-                    return
-                }
-
-                do {
-                    let sessionId = try await appState.sessionManager.open(connection: connection)
-                    let tab = SessionTab(
-                        connectionId: connection.id,
-                        sessionId: sessionId,
-                        title: connection.name
-                    )
-                    appState.workspace.addTab(tab)
-                    try appState.connectionService.markConnected(connection)
-                } catch {
-                    appState.toastMessage = ToastMessage(
-                        title: "Connection Failed",
-                        message: error.localizedDescription,
-                        style: .error
-                    )
-                }
-            }
+            onDoubleClick?(connection)
         }
 
         override func removeFromSuperview() {
@@ -258,6 +292,9 @@ struct ConnectionRow: View {
     let connection: Connection
 
     @Environment(AppState.self) private var appState
+    @Environment(SessionCoordinator.self) private var sessionCoordinator
+    @Environment(\.openWindow) private var openWindow
+    @EnvironmentObject private var windowModel: MainWindowViewModel
 
     // Determine the status of this connection based on active sessions
     private var sessionState: RDPConnectionState {
@@ -352,29 +389,8 @@ struct ConnectionRow: View {
         }
     }
 
-    private func openConnection(_ connection: Connection) async {
-        // If a tab already exists for this connection, focus it instead of opening a new one
-        if let existingTab = appState.workspace.tabs.first(where: { $0.connectionId == connection.id }) {
-            appState.workspace.activeTabId = existingTab.id
-            return
-        }
-
-        do {
-            let sessionId = try await appState.sessionManager.open(connection: connection)
-            let tab = SessionTab(
-                connectionId: connection.id,
-                sessionId: sessionId,
-                title: connection.name
-            )
-            appState.workspace.addTab(tab)
-            try appState.connectionService.markConnected(connection)
-        } catch {
-            appState.toastMessage = ToastMessage(
-                title: "Connection Failed",
-                message: error.localizedDescription,
-                style: .error
-            )
-        }
+    private func openConnection(_ connection: Connection) {
+        sessionCoordinator.openSession(for: connection, openWindow: openWindow)
     }
 }
 
@@ -387,12 +403,27 @@ struct FolderRow: View {
     let folder: Folder
 
     @Environment(AppState.self) private var appState
+    @State private var allowBindingUpdates = false
 
     var body: some View {
         // Access dataVersion to register observation dependency — when loadAll()
         // runs, SwiftUI will re-evaluate this body without destroying the view
         let _ = appState.connectionService.dataVersion
-        DisclosureGroup {
+        
+        let isExpanded = Binding<Bool>(
+            get: { appState.sidebar.expandedFolderIds.contains(folder.id) },
+            set: { newValue in
+                if allowBindingUpdates {
+                    if newValue {
+                        appState.sidebar.expandedFolderIds.insert(folder.id)
+                    } else {
+                        appState.sidebar.expandedFolderIds.remove(folder.id)
+                    }
+                }
+            }
+        )
+
+        DisclosureGroup(isExpanded: isExpanded) {
             // Subfolders
             ForEach(folder.subfolders.sorted(by: { $0.sortOrder < $1.sortOrder })) { subfolder in
                 FolderRow(folder: subfolder)
@@ -408,6 +439,11 @@ struct FolderRow: View {
             } icon: {
                 Image(systemName: "folder.fill")
                     .foregroundStyle(.secondary)
+            }
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    allowBindingUpdates = true
+                }
             }
             .contextMenu {
                 Button {
@@ -560,7 +596,7 @@ private struct ConnectionsSectionHeader: View {
             Button {
                 windowModel.inspectorVisible = true
                 windowModel.inspectorSelection = .globalDefaults
-                windowModel.browserSelection = .welcome
+                windowModel.browseContentSelection = .welcome
             } label: {
                 Image(systemName: "slider.horizontal.3")
                     .font(.caption)
@@ -577,7 +613,7 @@ private struct ConnectionsSectionHeader: View {
             Button {
                 windowModel.inspectorVisible = true
                 windowModel.inspectorSelection = .globalDefaults
-                windowModel.browserSelection = .welcome
+                windowModel.browseContentSelection = .welcome
             } label: {
                 Label("Edit Global Defaults\u{2026}", systemImage: "slider.horizontal.3")
             }

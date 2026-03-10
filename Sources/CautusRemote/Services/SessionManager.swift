@@ -31,40 +31,28 @@ final class SessionManager {
     ///
     /// - Parameter connection: The connection to open
     /// - Returns: The new session's UUID
-    func open(connection: Connection) async throws -> UUID {
+    func open(connection: Connection) -> UUID {
         // Prevent launching duplicates if a session is already active or connecting.
-        // We reuse the connection.id as the session.id key in our architecture.
         if let existingSession = sessions[connection.id] {
             switch existingSession.state {
             case .connected, .connecting, .reconnecting(_, _):
                 print("[SessionManager] Session for \(connection.id) already active/connecting. Deduplicating.")
                 return connection.id
             case .idle, .disconnected:
-                // Safely proceed to spawn a new one
                 break
             }
         }
 
-        // Retrieve credential from Keychain
-        let password = try keychainService.retrievePassword(for: connection.id) ?? ""
-        print("[SessionManager] Connecting to \(connection.host) with user \(connection.username). Password length: \(password.count)")
-
-        // Resolve effective settings via RDPResolvedConfig inheritance pipeline:
-        // Global (RDPResolvedConfig) → Folder patches (RDPPatch) → Connection patch (RDPPatch)
-        // effectiveRDPConfig() decodes JSON blobs — fine here (connect time, not hot list path).
-        // TODO: Replace .global with AppSettings.shared.rdpDefaults once Settings panel exists.
+        // 1. Resolve configuration early.
         let eff = connection.effectiveRDPConfig(global: .global)
-        print("[SessionManager] \(eff)")
-
-        // Map data model into strictly isolated configuration
-        let config = RDPConfig(
+        let configTemplate = RDPConfig(
             host: connection.host,
             port: eff.port,
             user: connection.username,
-            pass: password,
+            pass: "", // Empty to start, satisfied later.
             gwHost: connection.gatewayUrl,
             gwUser: connection.gatewayUsername,
-            gwPass: try? keychainService.retrievePassword(for: connection.id),
+            gwPass: nil,
             gwDomain: nil,
             gwMode: eff.gatewayMode.rawValue,
             gwBypassLocal: eff.gatewayBypassLocal,
@@ -72,11 +60,53 @@ final class SessionManager {
             ignoreCert: connection.ignoreCertificateErrors
         )
 
-        // Connect via the protocol engine
-        let session = try await engine.connect(config: config)
-        
-        // We use connection.id as the session key so 1 connection = 1 active session
+        // 2. Put a skeleton session in place immediately. This guarantees that when SwiftUI 
+        // calls `openWindow` synchronously, the UI component (`WorkspaceView`) will find it immediately.
+        let session = RDPSession(config: configTemplate)
         sessions[connection.id] = session
+
+        let keychainSvc = self.keychainService
+        let connectionId = connection.id
+
+        // 3. Move the blocking SecurityAgent OS Keychain GUI prompt completely off the Main Thread.
+        Task.detached {
+            do {
+                let password = try keychainSvc.retrievePassword(for: connectionId) ?? ""
+                let gwPass = try? keychainSvc.retrievePassword(for: connectionId)
+
+                let realConfig = RDPConfig(
+                    host: configTemplate.host,
+                    port: configTemplate.port,
+                    user: configTemplate.user,
+                    pass: password,
+                    gwHost: configTemplate.gwHost,
+                    gwUser: configTemplate.gwUser,
+                    gwPass: gwPass,
+                    gwDomain: configTemplate.gwDomain,
+                    gwMode: configTemplate.gwMode,
+                    gwBypassLocal: configTemplate.gwBypassLocal,
+                    gwUseSameCreds: configTemplate.gwUseSameCreds,
+                    ignoreCert: configTemplate.ignoreCert
+                )
+                
+                // Jump back to Main Thread to update config and initiate networking stack.
+                await MainActor.run {
+                    session.updateConfig(realConfig)
+                    Task {
+                        do {
+                            try await session.connect()
+                        } catch {
+                            print("[SessionManager] Asynchronous connect failed: \(error)")
+                        }
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    print("[SessionManager] Keychain access failed in detached task: \(error)")
+                    session.fail(with: error)
+                }
+            }
+        }
 
         return connection.id
     }

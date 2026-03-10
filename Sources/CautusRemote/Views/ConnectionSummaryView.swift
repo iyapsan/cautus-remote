@@ -4,6 +4,8 @@ import CautusRDP
 struct ConnectionSummaryView: View {
     let connection: Connection
     @Environment(AppState.self) private var appState
+    @Environment(SessionCoordinator.self) private var sessionCoordinator
+    @Environment(\.openWindow) private var openWindow
 
     // Resolve effective configuration to show read-only stats
     private var config: RDPResolvedConfig {
@@ -56,7 +58,7 @@ struct ConnectionSummaryView: View {
             HStack(spacing: 16) {
                 if canShowConnect {
                     Button {
-                        Task { await openConnection() }
+                        openConnection()
                     } label: {
                         Label("Connect", systemImage: "play.fill")
                             .padding(.horizontal, 16)
@@ -170,26 +172,7 @@ struct ConnectionSummaryView: View {
         }
     }
 
-    private func openConnection() async {
-        if let existingTab = appState.workspace.tabs.first(where: { $0.connectionId == connection.id }) {
-            appState.workspace.activeTabId = existingTab.id
-            return
-        }
-        do {
-            let sessionId = try await appState.sessionManager.open(connection: connection)
-            let tab = SessionTab(
-                connectionId: connection.id,
-                sessionId: sessionId,
-                title: connection.name
-            )
-            appState.workspace.addTab(tab)
-            try appState.connectionService.markConnected(connection)
-        } catch {
-            appState.toastMessage = ToastMessage(
-                title: "Connection Failed",
-                message: error.localizedDescription,
-                style: .error
-            )
-        }
+    private func openConnection() {
+        sessionCoordinator.openSession(for: connection, openWindow: openWindow)
     }
 }

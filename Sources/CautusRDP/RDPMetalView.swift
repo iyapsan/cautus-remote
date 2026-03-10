@@ -38,6 +38,10 @@ public class RDPMetalView: MTKView, MTKViewDelegate {
     
 
     
+    public override var intrinsicContentSize: NSSize {
+        return NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
+    }
+    
     public override var acceptsFirstResponder: Bool { return true }
     
     public func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}

@@ -85,3 +85,9 @@ enum PaletteAction: Sendable {
     case newConnection
     case closeTab(UUID)
 }
+
+/// Orientation for splitting panes.
+enum SplitOrientation: Sendable {
+    case horizontal
+    case vertical
+}

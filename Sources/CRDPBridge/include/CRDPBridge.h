@@ -74,6 +74,8 @@ void rdp_destroy(CRDPContextRef ctx);
 // 7. Get stats
 CRDPStats rdp_get_stats(CRDPContextRef ctx);
 
+uint32_t rdp_get_last_error(CRDPContextRef ctx);
+
 // 8. Get raw framebuffer (BGRA32)
 bool rdp_get_framebuffer(CRDPContextRef ctx, void **buffer, int *width,
                          int *height, int *stride);

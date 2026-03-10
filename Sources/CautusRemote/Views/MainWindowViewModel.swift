@@ -9,16 +9,24 @@ enum InspectorSelection: Equatable {
     case connection(UUID)
 }
 
-enum BrowserContentSelection: Equatable {
+enum BrowseContentSelection: Equatable {
     case welcome
     case folder(UUID)
     case connection(UUID)
+    case emptyState
     case search(String)
+}
+
+enum WindowTabKind: Equatable, Hashable, Codable {
+    case browse
+    case session(UUID)
 }
 
 @MainActor
 class MainWindowViewModel: ObservableObject {
-    @Published var browserSelection: BrowserContentSelection = .welcome
+    let listId = UUID()
+    @Published var selectedTabKind: WindowTabKind = .browse
+    @Published var browseContentSelection: BrowseContentSelection = .welcome
     @Published var inspectorSelection: InspectorSelection = .none
     @Published var inspectorVisible: Bool = true
     @Published var browserSearchQuery: String = ""

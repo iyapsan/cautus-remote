@@ -6,11 +6,13 @@ import SwiftUI
 /// with keyboard navigation (↑/↓, Enter, Escape).
 struct CommandPaletteView: View {
     @Environment(AppState.self) private var appState
+    @Environment(SessionCoordinator.self) private var sessionCoordinator
+    @Environment(\.openWindow) private var openWindow
 
     @State private var results: [PaletteResult] = []
 
     private var dispatcher: CommandDispatcher {
-        CommandDispatcher(appState: appState)
+        CommandDispatcher(appState: appState, sessionCoordinator: sessionCoordinator)
     }
 
     var body: some View {
@@ -134,7 +136,7 @@ struct CommandPaletteView: View {
             ? results[appState.palette.selectedIndex] : results.first else { return }
 
         Task {
-            await dispatcher.dispatch(result.action)
+            await dispatcher.dispatch(result.action, openWindow: openWindow)
         }
     }
 }

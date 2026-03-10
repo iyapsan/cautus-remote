@@ -1,12 +1,15 @@
 import Foundation
+import SwiftUI
 
 /// Routes command palette actions to the appropriate services.
 @MainActor
 final class CommandDispatcher {
     private let appState: AppState
+    private let sessionCoordinator: SessionCoordinator
 
-    init(appState: AppState) {
+    init(appState: AppState, sessionCoordinator: SessionCoordinator) {
         self.appState = appState
+        self.sessionCoordinator = sessionCoordinator
     }
 
     // MARK: - Search
@@ -44,20 +47,21 @@ final class CommandDispatcher {
         }
 
         // Open tabs as "Switch to..." commands
-        for tab in appState.workspace.tabs {
-            let matchScore = FuzzySearch.score(query: query, candidate: tab.title)
+        for (sessionId, window) in sessionCoordinator.sessionWindowsBySessionID {
+            let title = window.title
+            let matchScore = FuzzySearch.score(query: query, candidate: title)
             if query.isEmpty || matchScore > 0 {
                 results.append(PaletteResult(
-                    title: "Switch to \(tab.title)",
+                    title: "Switch to \(title)",
                     icon: "arrow.right.square",
-                    action: .switchTab(tab.id),
+                    action: .switchTab(sessionId),
                     score: matchScore
                 ))
             }
         }
 
         // Add split pane commands when tabs are open
-        if !appState.workspace.isEmpty {
+        if !sessionCoordinator.sessionWindowsBySessionID.isEmpty {
             if query.isEmpty || FuzzySearch.score(query: query, candidate: "split horizontal") > 0 {
                 results.append(PaletteResult(
                     title: "Split Pane Horizontal",
@@ -84,14 +88,16 @@ final class CommandDispatcher {
     // MARK: - Dispatch
 
     /// Execute a palette action.
-    func dispatch(_ action: PaletteAction) async {
+    func dispatch(_ action: PaletteAction, openWindow: OpenWindowAction) async {
         appState.palette.hide()
 
         switch action {
         case .openConnection(let id):
-            await openConnection(id: id)
+            openConnection(id: id, openWindow: openWindow)
         case .switchTab(let id):
-            appState.workspace.activeTabId = id
+            if let window = sessionCoordinator.sessionWindowsBySessionID[id] {
+                window.makeKeyAndOrderFront(nil)
+            }
         case .reconnect(let sessionId):
             try? await appState.sessionManager.reconnect(sessionId: sessionId)
         case .duplicateSession:
@@ -111,37 +117,22 @@ final class CommandDispatcher {
             appState.editingConnection = nil
             appState.isShowingConnectionSheet = true
         case .closeTab(let id):
-            appState.workspace.closeTab(id: id)
+            sessionCoordinator.sessionDidClose(sessionId: id)
         }
     }
 
     // MARK: - Private
 
-    private func openConnection(id: UUID) async {
+    private func openConnection(id: UUID, openWindow: OpenWindowAction) {
         // If a tab already exists for this connection, focus it instead of opening a new one
-        if let existingTab = appState.workspace.tabs.first(where: { $0.connectionId == id }) {
-            appState.workspace.activeTabId = existingTab.id
+        if let sessionId = sessionCoordinator.sessionIDByConnectionID[id],
+           let window = sessionCoordinator.sessionWindowsBySessionID[sessionId] {
+            window.makeKeyAndOrderFront(nil)
             return
         }
 
-        do {
-            guard let connection = try appState.connectionService.search(query: "")
-                .first(where: { $0.id == id }) else { return }
-
-            let sessionId = try await appState.sessionManager.open(connection: connection)
-            let tab = SessionTab(
-                connectionId: connection.id,
-                sessionId: sessionId,
-                title: connection.name
-            )
-            appState.workspace.addTab(tab)
-            try appState.connectionService.markConnected(connection)
-        } catch {
-            appState.toastMessage = ToastMessage(
-                title: "Connection Failed",
-                message: error.localizedDescription,
-                style: .error
-            )
-        }
+        guard let connection = try? appState.connectionService.search(query: "")
+            .first(where: { $0.id == id }) else { return }
+        sessionCoordinator.openSession(for: connection, openWindow: openWindow)
     }
 }

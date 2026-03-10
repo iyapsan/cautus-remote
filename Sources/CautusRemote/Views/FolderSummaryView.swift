@@ -3,6 +3,8 @@ import SwiftUI
 struct FolderSummaryView: View {
     let folder: Folder
     @Environment(AppState.self) private var appState
+    @Environment(SessionCoordinator.self) private var sessionCoordinator
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -36,10 +38,22 @@ struct FolderSummaryView: View {
                 }
                 .buttonStyle(.bordered)
                 
-                if !appState.connectionService.connectionsInFolder(folder).isEmpty {
-                    Button("Connect All") {}
-                        .buttonStyle(.borderedProminent)
-                        .disabled(true)
+                let connections = appState.connectionService.connectionsInFolder(folder)
+                if !connections.isEmpty {
+                    Button("Open \(connections.count) Connection\(connections.count == 1 ? "" : "s")") {
+                        guard connections.count <= 10 else {
+                            appState.toastMessage = ToastMessage(
+                                title: "Too Many Connections",
+                                message: "Cannot open more than 10 connections at once.",
+                                style: .error
+                            )
+                            return
+                        }
+                        for connection in connections {
+                            openConnection(connection)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
             }
             
@@ -150,7 +164,10 @@ struct FolderSummaryView: View {
         if cCount > 0 {
             parts.append("\(cCount) connection\(cCount == 1 ? "" : "s")")
         }
-        
         return parts.joined(separator: ", ")
+    }
+
+    private func openConnection(_ connection: Connection) {
+        sessionCoordinator.openSession(for: connection, openWindow: openWindow)
     }
 }

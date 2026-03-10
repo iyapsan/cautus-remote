@@ -11,7 +11,6 @@ final class AppState {
     // MARK: - Child State
 
     var sidebar = SidebarState()
-    var workspace = WorkspaceState()
     var palette = PaletteState()
 
     // MARK: - Services

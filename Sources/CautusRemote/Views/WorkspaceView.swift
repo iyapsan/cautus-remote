@@ -7,19 +7,21 @@ import CautusRDP
 /// toggles visibility without destroying the NSView (which would lose
 /// terminal scrollback and session state).
 struct WorkspaceView: View {
+    let sessionId: UUID
     @Environment(AppState.self) private var appState
+    @Environment(SessionCoordinator.self) private var sessionCoordinator
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         ZStack {
-            ForEach(appState.workspace.tabs) { tab in
-                if let activeSession = appState.sessionManager.sessions[tab.sessionId] {
-                    SessionContainerView(
-                        session: activeSession,
-                        isFocused: appState.workspace.activeTabId == tab.id
-                    )
-                    .opacity(appState.workspace.activeTabId == tab.id ? 1 : 0)
-                    .allowsHitTesting(appState.workspace.activeTabId == tab.id)
-                }
+            if let activeSession = appState.sessionManager.sessions[sessionId] {
+                SessionContainerView(
+                    session: activeSession,
+                    isFocused: true
+                )
+            } else {
+                Text("Session Ended.")
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -35,10 +37,12 @@ private struct SessionContainerView: View {
                 session: session,
                 isFocused: isFocused
             )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             
-            if session.state != .connected {
-                ConnectionOverlayView(session: session)
-            }
+            ConnectionOverlayView(session: session)
+                .opacity(session.state == .connected ? 0 : 1)
+                .allowsHitTesting(session.state != .connected)
+                .animation(.easeInOut(duration: 0.2), value: session.state)
         }
     }
 }
@@ -48,10 +52,6 @@ private struct ConnectionOverlayView: View {
     
     var body: some View {
         ZStack {
-            Rectangle()
-                .fill(.black.opacity(0.4))
-                .background(.ultraThinMaterial)
-            
             VStack(spacing: 20) {
                 // Determine icon and description
                 let isError = isDisconnectedError(session.state)

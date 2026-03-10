@@ -1,0 +1,21 @@
+[1/1] Compiling plugin GenerateManual
+[2/2] Compiling plugin GenerateDoccReference
+Building for debugging...
+[2/8] Write swift-version--58304C5D6DBC2206.txt
+[4/8] Emitting module CautusRemote
+[5/8] Compiling CautusRemote MainWindowView.swift
+/Users/iyaps/Documents/code/github.com/iyapsan/remotus/Sources/CautusRemote/Views/MainWindowView.swift:29:31: [1;31merror: [1;39mcannot find '$appState' in scope[0;0m
+ [0;36m27 |[0;0m     private var browseView: some View {
+ [0;36m28 |[0;0m         NavigationSplitView(
+ [0;36m29 |[0;0m             columnVisibility: [4;39m$appState[0;0m.sidebar.columnVisibility
+    [0;36m|[0;0m                               `- [1;31merror: [1;39mcannot find '$appState' in scope[0;0m
+ [0;36m30 |[0;0m         ) {
+ [0;36m31 |[0;0m             SidebarView()
+
+/Users/iyaps/Documents/code/github.com/iyapsan/remotus/Sources/CautusRemote/Views/MainWindowView.swift:96:29: [1;31merror: [1;39mcannot find '$appState' in scope[0;0m
+ [0;36m94 |[0;0m             }
+ [0;36m95 |[0;0m         }
+ [0;36m96 |[0;0m         .sheet(isPresented: [4;39m$appState[0;0m.isShowingConnectionSheet, onDismiss: {
+    [0;36m|[0;0m                             `- [1;31merror: [1;39mcannot find '$appState' in scope[0;0m
+ [0;36m97 |[0;0m             try? appState.connectionService.loadAll()
+ [0;36m98 |[0;0m             if let id = appState.newlyCreatedConnectionId {

@@ -292,8 +292,8 @@ struct FolderDefaultsSheetView: View {
 
 private extension RDPPatch {
     var activeFieldCount: Int {
-        [port, colorDepth, scaling, dynamicResolution, clipboardEnabled,
-         nlaRequired, gatewayMode, gatewayBypassLocal, reconnectAttempts]
+        ([port, colorDepth, scaling, dynamicResolution, clipboardEnabled,
+         nlaRequired, gatewayMode, gatewayBypassLocal, reconnectAttempts] as [Any?])
             .filter { $0 != nil }.count
     }
 }
