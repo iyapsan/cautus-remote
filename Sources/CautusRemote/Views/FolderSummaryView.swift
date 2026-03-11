@@ -3,7 +3,8 @@ import SwiftUI
 struct FolderSummaryView: View {
     let folder: Folder
     @Environment(AppState.self) private var appState
-    @Environment(SessionCoordinator.self) private var sessionCoordinator
+    @Environment(SessionRegistry.self) private var sessionRegistry
+    @Environment(BrowseCoordinator.self) private var browseCoordinator
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -168,6 +169,6 @@ struct FolderSummaryView: View {
     }
 
     private func openConnection(_ connection: Connection) {
-        sessionCoordinator.openSession(for: connection, openWindow: openWindow)
+        sessionRegistry.openSession(for: connection)
     }
 }

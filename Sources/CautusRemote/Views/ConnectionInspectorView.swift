@@ -9,7 +9,8 @@ struct ConnectionInspectorView: View {
     let connection: Connection
     
     @Environment(AppState.self) private var appState
-    @Environment(SessionCoordinator.self) private var sessionCoordinator
+    @Environment(SessionRegistry.self) private var sessionRegistry
+    @Environment(BrowseCoordinator.self) private var browseCoordinator
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openWindow) private var openWindow
     
@@ -443,7 +444,7 @@ struct ConnectionInspectorView: View {
     }
     
     private func openConnection() {
-        sessionCoordinator.openSession(for: connection, openWindow: openWindow)
+        sessionRegistry.openSession(for: connection)
     }
 }
 
@@ -451,20 +452,22 @@ struct ConnectionInspectorView: View {
 struct ConnectionActionButtons: View {
     let connection: Connection
     @Environment(AppState.self) private var appState
-    @Environment(SessionCoordinator.self) private var sessionCoordinator
+    @Environment(SessionRegistry.self) private var sessionRegistry
+    @Environment(BrowseCoordinator.self) private var browseCoordinator
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        if let session = appState.sessionManager.sessions[connection.id] {
+        if let record = sessionRegistry.existingLiveSession(for: connection.id),
+           let session = sessionRegistry.runtime(for: record.id) {
             ActiveSessionActionButton(
                 connection: connection,
                 session: session,
-                sessionCoordinator: sessionCoordinator,
+                sessionRegistry: sessionRegistry, browseCoordinator: browseCoordinator,
                 openWindow: openWindow
             )
         } else {
             Button("Connect") {
-                sessionCoordinator.openSession(for: connection, openWindow: openWindow)
+                sessionRegistry.openSession(for: connection)
             }
             .buttonStyle(.borderedProminent)
             .fontWeight(.medium)
@@ -478,15 +481,16 @@ struct ConnectionActionButtons: View {
 private struct ActiveSessionActionButton: View {
     let connection: Connection
     @ObservedObject var session: RDPSession
-    let sessionCoordinator: SessionCoordinator
+    let sessionRegistry: SessionRegistry
+    let browseCoordinator: BrowseCoordinator
     let openWindow: OpenWindowAction
 
     var body: some View {
         Group {
             if session.state == .connected {
                 Button("Disconnect") {
-                    if let sessionId = sessionCoordinator.sessionIDByConnectionID[connection.id] {
-                        sessionCoordinator.sessionDidClose(sessionId: sessionId)
+                    if let session = sessionRegistry.existingLiveSession(for: connection.id) {
+                        sessionRegistry.closeSession(session.id)
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -496,7 +500,7 @@ private struct ActiveSessionActionButton: View {
                     .disabled(true)
             } else {
                 Button("Connect") {
-                    sessionCoordinator.openSession(for: connection, openWindow: openWindow)
+                    sessionRegistry.openSession(for: connection)
                 }
                 .buttonStyle(.borderedProminent)
             }

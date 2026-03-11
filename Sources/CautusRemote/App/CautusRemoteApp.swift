@@ -17,8 +17,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 /// Cautus Remote — macOS native SSH connection manager.
 struct CautusRemoteApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    
     @State private var appState: AppState
-    @State private var sessionCoordinator: SessionCoordinator
+    @State private var sessionRegistry: SessionRegistry
+    @State private var browseCoordinator: BrowseCoordinator
+    @State private var detachedWindowManager: DetachedSessionWindowManager
+    
     let modelContainer: ModelContainer
 
     init() {
@@ -61,58 +65,96 @@ struct CautusRemoteApp: App {
             keychainService: keychainService
         )
         
+        // 1. Domain Object: Canonical Session Memory
+        let registry = SessionRegistry(keychainService: keychainService)
+        
+        // 2. Main Window Surface Coordinator
+        let browseCoord = BrowseCoordinator(sessionRegistry: registry)
+        
+        // 3. Detached Native Window Coordinator
+        let detachedManager = DetachedSessionWindowManager(sessionRegistry: registry)
+        
+        // Break dependency cycle safely explicitly setting factory here
+        detachedManager.createWindowContent = { sessionID in
+            AnyView(
+                WorkspaceView(sessionId: sessionID, isFocused: true)
+                    .environment(state)
+                    .environment(registry)
+            )
+        }
+        
         _appState = State(initialValue: state)
-        _sessionCoordinator = State(initialValue: SessionCoordinator(appState: state, modelContainer: container))
+        _sessionRegistry = State(initialValue: registry)
+        _browseCoordinator = State(initialValue: browseCoord)
+        _detachedWindowManager = State(initialValue: detachedManager)
 
         // Load initial data
         try? connectionService.loadAll()
     }
 
     var body: some Scene {
-        WindowGroup(id: "main", for: WindowTabKind.self) { $tabKind in
-            MainWindowView(tabKind: tabKind)
+        WindowGroup(id: "main") {
+            MainWindowView()
                 .environment(appState)
-                .environment(sessionCoordinator)
-        } defaultValue: {
-            .browse
+                .environment(sessionRegistry)
+                .environment(browseCoordinator)
+                .environment(detachedWindowManager)
         }
         .windowStyle(.titleBar)
         .windowResizability(.contentMinSize)
         .modelContainer(modelContainer)
         .commands {
-            CautusCommands(appState: appState, coordinator: sessionCoordinator)
+            CautusCommands(
+                appState: appState,
+                browseCoordinator: browseCoordinator,
+                registry: sessionRegistry
+            )
         }
     }
 }
 
 struct CautusCommands: Commands {
     let appState: AppState
-    let coordinator: SessionCoordinator
-    @Environment(\.openWindow) private var openWindow
+    let browseCoordinator: BrowseCoordinator
+    let registry: SessionRegistry
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
-            Button("New Window") {
-                coordinator.openBrowse(openWindow: openWindow)
-            }
-            .keyboardShortcut("n", modifiers: .command)
-
             Button("New Connection") {
                 appState.isShowingConnectionSheet = true
             }
-            .keyboardShortcut("n", modifiers: [.command, .shift])
+            .keyboardShortcut("n", modifiers: .command)
+            
+            Button("Close Current Tab/Window") {
+                browseCoordinator.closeCurrentSurface()
+            }
+            .keyboardShortcut("w", modifiers: .command)
         }
+        
         CommandMenu("Session") {
             Button("Command Palette") {
                 appState.palette.isVisible.toggle()
             }
             .keyboardShortcut("k", modifiers: .command)
+            
+            Divider()
 
-            Button("New Session Tab") {
-                appState.isShowingConnectionSheet = true
+            Button("Focus Browse") {
+                browseCoordinator.focusBrowse()
             }
-            .keyboardShortcut("t", modifiers: .command)
+            .keyboardShortcut("1", modifiers: .command)
+            
+            Button("Next Tab") {
+                browseCoordinator.selectNextSurface()
+            }
+            .keyboardShortcut(.tab, modifiers: .control)
+            
+            Button("Previous Tab") {
+                browseCoordinator.selectPreviousSurface()
+            }
+            .keyboardShortcut(.tab, modifiers: [.control, .shift])
         }
+        
         CommandMenu("Connections") {
             Button("Edit Global Defaults…") {
                 appState.isShowingGlobalDefaultsSheet = true

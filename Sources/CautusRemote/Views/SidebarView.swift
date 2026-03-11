@@ -7,7 +7,8 @@ import CautusRDP
 /// Includes a search field at the top.
 struct SidebarView: View {
     @Environment(AppState.self) private var appState
-    @Environment(SessionCoordinator.self) private var sessionCoordinator
+    @Environment(SessionRegistry.self) private var sessionRegistry
+    @Environment(BrowseCoordinator.self) private var browseCoordinator
     @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var windowModel: MainWindowViewModel
 
@@ -143,16 +144,10 @@ struct SidebarView: View {
                     windowModel.inspectorSelection = .folder(firstID)
                     windowModel.browseContentSelection = .folder(firstID)
                     windowModel.inspectorVisible = true
-                    
-                    // User click folder -> Ensure Browse Tab is focused
-                    sessionCoordinator.openBrowse(openWindow: openWindow)
                 } else if appState.connectionService.allConnections.contains(where: { $0.id == firstID }) {
                     windowModel.inspectorSelection = .connection(firstID)
                     windowModel.browseContentSelection = .connection(firstID)
                     windowModel.inspectorVisible = true
-                    
-                    // User click connection -> Focus Session Tab if active, else Browse Tab
-                    sessionCoordinator.focusSessionOrBrowse(for: firstID, openWindow: openWindow)
                 } else {
                     windowModel.inspectorSelection = .none
                     windowModel.browseContentSelection = .welcome
@@ -230,7 +225,7 @@ struct SidebarView: View {
     }
 
     private func openSessionTab(for connection: Connection) {
-        sessionCoordinator.openSession(for: connection, openWindow: openWindow)
+        sessionRegistry.openSession(for: connection)
     }
 }
 
@@ -298,14 +293,17 @@ struct ConnectionRow: View {
     let connection: Connection
 
     @Environment(AppState.self) private var appState
-    @Environment(SessionCoordinator.self) private var sessionCoordinator
+    @Environment(SessionRegistry.self) private var sessionRegistry
     @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var windowModel: MainWindowViewModel
 
     // Determine the status of this connection based on active sessions
     private var sessionState: RDPConnectionState {
-        let activeSession = appState.sessionManager.sessions[connection.id]
-        return activeSession?.state ?? .idle
+        guard let record = sessionRegistry.existingLiveSession(for: connection.id),
+              let runtime = sessionRegistry.runtime(for: record.id) else {
+            return .idle
+        }
+        return runtime.state
     }
 
     private var statusColor: Color {
@@ -396,7 +394,7 @@ struct ConnectionRow: View {
     }
 
     private func openConnection(_ connection: Connection) {
-        sessionCoordinator.openSession(for: connection, openWindow: openWindow)
+        sessionRegistry.openSession(for: connection)
     }
 }
 

@@ -6,13 +6,14 @@ import SwiftUI
 /// with keyboard navigation (↑/↓, Enter, Escape).
 struct CommandPaletteView: View {
     @Environment(AppState.self) private var appState
-    @Environment(SessionCoordinator.self) private var sessionCoordinator
+    @Environment(SessionRegistry.self) private var sessionRegistry
+    @Environment(BrowseCoordinator.self) private var browseCoordinator
     @Environment(\.openWindow) private var openWindow
 
     @State private var results: [PaletteResult] = []
 
     private var dispatcher: CommandDispatcher {
-        CommandDispatcher(appState: appState, sessionCoordinator: sessionCoordinator)
+        CommandDispatcher(appState: appState, sessionRegistry: sessionRegistry, browseCoordinator: browseCoordinator)
     }
 
     var body: some View {

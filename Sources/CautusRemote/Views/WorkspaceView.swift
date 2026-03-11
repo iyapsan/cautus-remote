@@ -8,16 +8,18 @@ import CautusRDP
 /// terminal scrollback and session state).
 struct WorkspaceView: View {
     let sessionId: UUID
+    let isFocused: Bool
     @Environment(AppState.self) private var appState
-    @Environment(SessionCoordinator.self) private var sessionCoordinator
-    @Environment(\.openWindow) private var openWindow
+    @Environment(SessionRegistry.self) private var sessionRegistry
 
     var body: some View {
         ZStack {
-            if let activeSession = appState.sessionManager.sessions[sessionId] {
+            // Retrieve truth directly from SessionRegistry's stored session record
+            if let session = sessionRegistry.runtime(for: sessionId) {
                 SessionContainerView(
-                    session: activeSession,
-                    isFocused: true
+                    sessionId: sessionId,
+                    session: session,
+                    isFocused: isFocused
                 )
             } else {
                 Text("Session Ended.")
@@ -28,6 +30,7 @@ struct WorkspaceView: View {
 }
 
 private struct SessionContainerView: View {
+    let sessionId: UUID
     @ObservedObject var session: RDPSession
     let isFocused: Bool
     
@@ -35,6 +38,7 @@ private struct SessionContainerView: View {
         ZStack {
             RDPWorkspaceView(
                 session: session,
+                sessionId: sessionId,
                 isFocused: isFocused
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)

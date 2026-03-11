@@ -4,8 +4,15 @@ import CautusRDP
 struct ConnectionSummaryView: View {
     let connection: Connection
     @Environment(AppState.self) private var appState
-    @Environment(SessionCoordinator.self) private var sessionCoordinator
+    @Environment(SessionRegistry.self) private var sessionRegistry
+    @Environment(BrowseCoordinator.self) private var browseCoordinator
     @Environment(\.openWindow) private var openWindow
+    
+    // Observe the live session for SwiftUI to re-render when state changes
+    private var liveSession: RDPSession? {
+        guard let record = sessionRegistry.existingLiveSession(for: connection.id) else { return nil }
+        return sessionRegistry.runtime(for: record.id)
+    }
 
     // Resolve effective configuration to show read-only stats
     private var config: RDPResolvedConfig {
@@ -163,7 +170,7 @@ struct ConnectionSummaryView: View {
     }
 
     private var canShowConnect: Bool {
-        guard let session = appState.sessionManager.sessions[connection.id] else { return true }
+        guard let session = liveSession else { return true }
         switch session.state {
         case .connected, .connecting, .reconnecting(_, _):
             return false
@@ -173,6 +180,6 @@ struct ConnectionSummaryView: View {
     }
 
     private func openConnection() {
-        sessionCoordinator.openSession(for: connection, openWindow: openWindow)
+        sessionRegistry.openSession(for: connection)
     }
 }

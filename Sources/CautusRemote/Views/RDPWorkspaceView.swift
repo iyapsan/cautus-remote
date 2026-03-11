@@ -5,29 +5,24 @@ import CautusRDP
 /// Replaces TerminalPaneView for rendering RDP sessions natively in SwiftUI.
 struct RDPWorkspaceView: NSViewRepresentable {
     let session: RDPSession
+    let sessionId: UUID
     let isFocused: Bool
 
     func makeNSView(context: Context) -> RDPMetalView {
-        let device = MTLCreateSystemDefaultDevice()
-        let mtkView = RDPMetalView(frame: .zero, device: device)
-        mtkView.session = session
-        
-        // Sever layout constraints so MTKView does not push window out when drawableSize changes
-        mtkView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        mtkView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
-        mtkView.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        mtkView.setContentHuggingPriority(.defaultLow, for: .vertical)
-        
-        return mtkView
+        // Firmly decouple the rendering surface from SwiftUI's redraws
+        return SessionViewCache.shared.view(for: sessionId, session: session)
     }
 
     func updateNSView(_ nsView: RDPMetalView, context: Context) {
         nsView.session = session
-        // If the view becomes focused, we should ideally make it the first responder
-        // so it intercepts keystrokes via its NSView overrides.
+        
+        // If the view becomes focused, make it the first responder
+        // to intercept keystrokes via its NSView overrides.
         if isFocused {
             DispatchQueue.main.async {
-                nsView.window?.makeFirstResponder(nsView)
+                if nsView.window?.firstResponder !== nsView {
+                    nsView.window?.makeFirstResponder(nsView)
+                }
             }
         }
     }

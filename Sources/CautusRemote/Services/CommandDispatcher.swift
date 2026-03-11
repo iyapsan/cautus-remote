@@ -5,11 +5,13 @@ import SwiftUI
 @MainActor
 final class CommandDispatcher {
     private let appState: AppState
-    private let sessionCoordinator: SessionCoordinator
+    private let sessionRegistry: SessionRegistry
+    private let browseCoordinator: BrowseCoordinator
 
-    init(appState: AppState, sessionCoordinator: SessionCoordinator) {
+    init(appState: AppState, sessionRegistry: SessionRegistry, browseCoordinator: BrowseCoordinator) {
         self.appState = appState
-        self.sessionCoordinator = sessionCoordinator
+        self.sessionRegistry = sessionRegistry
+        self.browseCoordinator = browseCoordinator
     }
 
     // MARK: - Search
@@ -47,8 +49,8 @@ final class CommandDispatcher {
         }
 
         // Open tabs as "Switch to..." commands
-        for (sessionId, window) in sessionCoordinator.sessionWindowsBySessionID {
-            let title = window.title
+        for (sessionId, record) in sessionRegistry.activeSessions {
+            let title = record.title
             let matchScore = FuzzySearch.score(query: query, candidate: title)
             if query.isEmpty || matchScore > 0 {
                 results.append(PaletteResult(
@@ -61,7 +63,7 @@ final class CommandDispatcher {
         }
 
         // Add split pane commands when tabs are open
-        if !sessionCoordinator.sessionWindowsBySessionID.isEmpty {
+        if !sessionRegistry.activeSessions.isEmpty {
             if query.isEmpty || FuzzySearch.score(query: query, candidate: "split horizontal") > 0 {
                 results.append(PaletteResult(
                     title: "Split Pane Horizontal",
@@ -95,10 +97,9 @@ final class CommandDispatcher {
         case .openConnection(let id):
             openConnection(id: id, openWindow: openWindow)
         case .switchTab(let id):
-            if let window = sessionCoordinator.sessionWindowsBySessionID[id] {
-                window.makeKeyAndOrderFront(nil)
-            }
+            sessionRegistry.focusSession(id)
         case .reconnect(let sessionId):
+            // Fallthrough to the RDP Session Manager.
             try? await appState.sessionManager.reconnect(sessionId: sessionId)
         case .duplicateSession:
             // TODO: Phase 3 — duplicate the session's connection
@@ -117,7 +118,7 @@ final class CommandDispatcher {
             appState.editingConnection = nil
             appState.isShowingConnectionSheet = true
         case .closeTab(let id):
-            sessionCoordinator.sessionDidClose(sessionId: id)
+            sessionRegistry.closeSession(id)
         }
     }
 
@@ -125,14 +126,13 @@ final class CommandDispatcher {
 
     private func openConnection(id: UUID, openWindow: OpenWindowAction) {
         // If a tab already exists for this connection, focus it instead of opening a new one
-        if let sessionId = sessionCoordinator.sessionIDByConnectionID[id],
-           let window = sessionCoordinator.sessionWindowsBySessionID[sessionId] {
-            window.makeKeyAndOrderFront(nil)
+        if let session = sessionRegistry.existingLiveSession(for: id) {
+            sessionRegistry.focusSession(session.id)
             return
         }
 
         guard let connection = try? appState.connectionService.search(query: "")
             .first(where: { $0.id == id }) else { return }
-        sessionCoordinator.openSession(for: connection, openWindow: openWindow)
+        sessionRegistry.openSession(for: connection)
     }
 }
