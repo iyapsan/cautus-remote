@@ -12,15 +12,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Activate as foreground app (required for SPM-built executables)
         NSApplication.shared.setActivationPolicy(.regular)
     }
-
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
-            // Restore default behaviour: open a new implicit main window by re-sending a New Window event
-            NSApp.sendAction(Selector(("newDocument:")), to: nil, from: self)
-            return true
-        }
-        return false
-    }
 }
 
 /// Cautus Remote — macOS native SSH connection manager.
@@ -136,6 +127,7 @@ struct AppLauncher {
     static func main() throws {
         // Purge the old explicitly forced generic tabs setting from earlier builds.
         UserDefaults.standard.removeObject(forKey: "AppleWindowTabbingMode")
+        NSWindow.allowsAutomaticWindowTabbing = false
         CautusRemoteApp.main()
     }
 }

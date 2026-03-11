@@ -134,9 +134,13 @@ final class SessionCoordinator {
             await appState.sessionManager.close(sessionId: sessionId)
         }
         
-        // Teardown flow resurrection check
-        if sessionWindowsBySessionID.isEmpty, let openAction = openWindow {
-            openBrowse(openWindow: openAction)
+        // If the browse window is still alive, fallback focus to it.
+        // But do NOT forcefully resurrect or recreate it here, because doing so creates
+        // zombie windows when the user explicitly clicks the red 'X' to close the whole window!
+        if sessionWindowsBySessionID.isEmpty {
+            if let window = browseTabWindow, window.isVisible {
+                window.makeKeyAndOrderFront(nil)
+            }
         }
     }
     

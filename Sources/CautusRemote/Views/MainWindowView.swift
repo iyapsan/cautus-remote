@@ -26,6 +26,7 @@ struct MainWindowView: View {
                 case .browse:
                     MainContentRootView()
                         .environmentObject(windowModel)
+                        .navigationTitle("Browse")
                 case .session(let sessionId):
                     WorkspaceView(sessionId: sessionId)
                 }
@@ -144,6 +145,16 @@ struct MainWindowView: View {
         .onChange(of: appState.sidebar.selectedConnectionIds) { oldSelection, newSelection in
             print("[MainWindowView] Selection changed from \(oldSelection) to \(newSelection)")
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("CautusShowConnectionSheet"))) { _ in
+            appState.connectionCreationParentFolderId = nil
+            appState.editingConnection = nil
+            appState.isShowingConnectionSheet = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("CautusCreateNewFolder"))) { _ in
+            appState.folderActionTarget = appState.selectedFolderForCreation
+            appState.folderAlertText = ""
+            appState.isShowingNewFolderAlert = true
+        }
         .background(WindowTabbingConfigurator(tabKind: tabKind, coordinator: sessionCoordinator))
         .onAppear {
             sessionCoordinator.defaultOpenWindowAction = openWindow
@@ -169,6 +180,7 @@ class TabbingConfigView: NSView {
     var tabKind: WindowTabKind?
     var coordinator: SessionCoordinator?
     private var closeObserver: Any?
+    private var interceptor: TabInterceptorResponder?
     
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -202,15 +214,17 @@ class TabbingConfigView: NSView {
             coordinator?.browseTabWindow = window
         }
         
-        // Set the window title
+        // Set the window title and configure close button presence
         if case .session(let sessionId) = tabKind {
             // Coordinator knows best how to disambiguate the title
             if let connId = coordinator?.sessionIDByConnectionID.first(where: { $0.value == sessionId })?.key,
                let connection = coordinator?.appState.connectionService.connection(connId) {
                 window.title = coordinator?.title(for: connection) ?? connection.name
             }
+            window.standardWindowButton(.closeButton)?.isEnabled = true
         } else {
             window.title = "Browse"
+            window.standardWindowButton(.closeButton)?.isEnabled = true
         }
         
         // Find any other existing window with the same identifier
@@ -223,6 +237,51 @@ class TabbingConfigView: NSView {
                 window.makeKeyAndOrderFront(nil)
             }
         }
+        
+        // Inject our responder to intercept newWindowForTab: before SwiftUI's WindowController gets it.
+        if interceptor == nil {
+            let newInterceptor = TabInterceptorResponder()
+            newInterceptor.nextResponder = window.nextResponder
+            window.nextResponder = newInterceptor
+            interceptor = newInterceptor
+        }
+    }
+}
+
+class TabInterceptorResponder: NSResponder {
+    @objc override func newWindowForTab(_ sender: Any?) {
+        let menu = NSMenu(title: "New")
+        
+        let newFolderItem = NSMenuItem(title: "New Folder", action: #selector(newFolderAction), keyEquivalent: "")
+        newFolderItem.target = self
+        
+        let newRDPItem = NSMenuItem(title: "New RDP Connection", action: #selector(newRDPAction), keyEquivalent: "")
+        newRDPItem.target = self
+        
+        let newVNCItem = NSMenuItem(title: "New VNC Connection", action: nil, keyEquivalent: "")
+        newVNCItem.isEnabled = false
+        let newSSHItem = NSMenuItem(title: "New SSH Connection", action: nil, keyEquivalent: "")
+        newSSHItem.isEnabled = false
+        
+        menu.addItem(newFolderItem)
+        menu.addItem(.separator())
+        menu.addItem(newRDPItem)
+        menu.addItem(newVNCItem)
+        menu.addItem(newSSHItem)
+        
+        if let event = NSApp.currentEvent, let view = NSApp.keyWindow?.contentView {
+            NSMenu.popUpContextMenu(menu, with: event, for: view)
+        } else {
+            menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+        }
+    }
+    
+    @objc func newFolderAction() {
+        NotificationCenter.default.post(name: NSNotification.Name("CautusCreateNewFolder"), object: nil)
+    }
+    
+    @objc func newRDPAction() {
+        NotificationCenter.default.post(name: NSNotification.Name("CautusShowConnectionSheet"), object: nil)
     }
 }
 }
