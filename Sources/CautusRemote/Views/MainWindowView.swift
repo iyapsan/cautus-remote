@@ -56,75 +56,7 @@ struct MainWindowView: View {
         }
         .environmentObject(windowModel)
         .navigationSplitViewStyle(.balanced)
-        .toolbar {
-            // Search
-            ToolbarItem(placement: .automatic) {
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                    TextField("Search", text: $windowModel.browserSearchQuery)
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.small)
-                        .frame(minWidth: 160)
-                }
-                .padding(.leading, 8)
-            }
-
-            // [+ New][⌘ Palette][≡ Defaults] in ONE ToolbarItem so they're a single NSToolbarItem
-            ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 2) {
-                    Menu {
-                        Button("New Folder") {
-                            appState.folderActionTarget = appState.selectedFolderForCreation
-                            appState.folderAlertText = ""
-                            appState.isShowingNewFolderAlert = true
-                        }
-                        Divider()
-                        Button("New RDP Connection") {
-                            appState.connectionCreationParentFolderId = nil
-                            appState.editingConnection = nil
-                            appState.isShowingConnectionSheet = true
-                        }
-                        Button("New VNC Connection") { }.disabled(true)
-                        Button("New SSH Connection") { }.disabled(true)
-                    } label: {
-                        Label("New", systemImage: "plus")
-                    }
-                    .help("New (⌘N)")
-
-                    Button {
-                        appState.palette.show()
-                    } label: {
-                        Label("Command Palette", systemImage: "command")
-                            .symbolRenderingMode(.hierarchical)
-                    }
-                    .keyboardShortcut("k", modifiers: .command)
-                    .help("Command Palette (⌘K)")
-
-                    Button {
-                        windowModel.inspectorVisible   = true
-                        windowModel.inspectorSelection = .globalDefaults
-                        windowModel.browseContentSelection = .welcome
-                    } label: {
-                        Label("Edit Defaults", systemImage: "slider.horizontal.3")
-                    }
-                    .help("Edit Global Defaults")
-                }
-            }
-
-            // [Inspector] — separate item for natural macOS toolbar spacing
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    windowModel.inspectorVisible.toggle()
-                } label: {
-                    Label(
-                        windowModel.inspectorVisible ? "Hide Inspector" : "Show Inspector",
-                        systemImage: "sidebar.right"
-                    )
-                }
-                .help(windowModel.inspectorVisible ? "Hide Inspector" : "Show Inspector")
-            }
-        }
+        .toolbar { toolbarContent }
 
 
 
@@ -209,5 +141,76 @@ struct MainWindowView: View {
             suffix = sessionRegistry.session(for: id)?.title ?? "Session"
         }
         return "Cautus Remote — \(suffix)"
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        // Search
+        ToolbarItem(placement: .automatic) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Search", text: $windowModel.browserSearchQuery)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.regular)
+                    .frame(minWidth: 160)
+            }
+            .padding(.leading, 8)
+        }
+
+        // [+ New][⌘ Palette][≡ Defaults] — ONE ToolbarItem = one NSToolbarItem
+        ToolbarItem(placement: .primaryAction) {
+            HStack(spacing: 2) {
+                Menu {
+                    Button("New Folder") {
+                        appState.folderActionTarget = appState.selectedFolderForCreation
+                        appState.folderAlertText = ""
+                        appState.isShowingNewFolderAlert = true
+                    }
+                    Divider()
+                    Button("New RDP Connection") {
+                        appState.connectionCreationParentFolderId = nil
+                        appState.editingConnection = nil
+                        appState.isShowingConnectionSheet = true
+                    }
+                    Button("New VNC Connection") { }.disabled(true)
+                    Button("New SSH Connection") { }.disabled(true)
+                } label: {
+                    Label("New", systemImage: "plus")
+                }
+                .help("New (⌘N)")
+
+                Button {
+                    appState.palette.show()
+                } label: {
+                    Label("Command Palette", systemImage: "command")
+                        .symbolRenderingMode(.hierarchical)
+                }
+                .keyboardShortcut("k", modifiers: .command)
+                .help("Command Palette (⌘K)")
+
+                Button {
+                    windowModel.inspectorVisible   = true
+                    windowModel.inspectorSelection = .globalDefaults
+                    windowModel.browseContentSelection = .welcome
+                } label: {
+                    Label("Edit Defaults", systemImage: "slider.horizontal.3")
+                }
+                .help("Edit Global Defaults")
+            }
+        }
+
+        // [Inspector] — separate ToolbarItem for natural macOS toolbar spacing
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                windowModel.inspectorVisible.toggle()
+            } label: {
+                Label(
+                    windowModel.inspectorVisible ? "Hide Inspector" : "Show Inspector",
+                    systemImage: "sidebar.right"
+                )
+            }
+            .help(windowModel.inspectorVisible ? "Hide Inspector" : "Show Inspector")
+        }
     }
 }
