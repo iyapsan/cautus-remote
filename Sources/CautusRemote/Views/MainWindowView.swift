@@ -57,55 +57,77 @@ struct MainWindowView: View {
         .environmentObject(windowModel)
         .navigationSplitViewStyle(.balanced)
         .toolbar {
-            ToolbarItemGroup(placement: .automatic) {
+            // Search
+            ToolbarItem(placement: .automatic) {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(.secondary)
                     TextField("Search", text: $windowModel.browserSearchQuery)
                         .textFieldStyle(.roundedBorder)
+                        .controlSize(.small)
                         .frame(minWidth: 160)
                 }
+                .padding(.leading, 8)
             }
-            ToolbarItemGroup(placement: .primaryAction) {
+
+            // [+ New][⌘ Palette][≡ Defaults] in ONE ToolbarItem so they're a single NSToolbarItem
+            ToolbarItem(placement: .primaryAction) {
+                HStack(spacing: 2) {
+                    Menu {
+                        Button("New Folder") {
+                            appState.folderActionTarget = appState.selectedFolderForCreation
+                            appState.folderAlertText = ""
+                            appState.isShowingNewFolderAlert = true
+                        }
+                        Divider()
+                        Button("New RDP Connection") {
+                            appState.connectionCreationParentFolderId = nil
+                            appState.editingConnection = nil
+                            appState.isShowingConnectionSheet = true
+                        }
+                        Button("New VNC Connection") { }.disabled(true)
+                        Button("New SSH Connection") { }.disabled(true)
+                    } label: {
+                        Label("New", systemImage: "plus")
+                    }
+                    .help("New (⌘N)")
+
+                    Button {
+                        appState.palette.show()
+                    } label: {
+                        Label("Command Palette", systemImage: "command")
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                    .keyboardShortcut("k", modifiers: .command)
+                    .help("Command Palette (⌘K)")
+
+                    Button {
+                        windowModel.inspectorVisible   = true
+                        windowModel.inspectorSelection = .globalDefaults
+                        windowModel.browseContentSelection = .welcome
+                    } label: {
+                        Label("Edit Defaults", systemImage: "slider.horizontal.3")
+                    }
+                    .help("Edit Global Defaults")
+                }
+            }
+
+            // [Inspector] — separate item for natural macOS toolbar spacing
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     windowModel.inspectorVisible.toggle()
                 } label: {
-                    Image(systemName: "sidebar.right")
+                    Label(
+                        windowModel.inspectorVisible ? "Hide Inspector" : "Show Inspector",
+                        systemImage: "sidebar.right"
+                    )
                 }
                 .help(windowModel.inspectorVisible ? "Hide Inspector" : "Show Inspector")
-
-                Button {
-                    appState.palette.show()
-                } label: {
-                    Image(systemName: "command")
-                        .symbolRenderingMode(.hierarchical)
-                }
-                .keyboardShortcut("k", modifiers: .command)
-                .help("Command Palette (⌘K)")
-
-                Menu {
-                    Button("New Folder") {
-                        appState.folderActionTarget = appState.selectedFolderForCreation
-                        appState.folderAlertText = ""
-                        appState.isShowingNewFolderAlert = true
-                    }
-                    Divider()
-                    Button("New RDP Connection") {
-                        appState.connectionCreationParentFolderId = nil
-                        appState.editingConnection = nil
-                        appState.isShowingConnectionSheet = true
-                    }
-                    Button("New VNC Connection") { }
-                        .disabled(true)
-                    Button("New SSH Connection") { }
-                        .disabled(true)
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .keyboardShortcut("n", modifiers: .command)
-                .help("New (⌘N)")
             }
         }
+
+
+
         .sheet(isPresented: $appState.isShowingConnectionSheet, onDismiss: {
             try? appState.connectionService.loadAll()
             if let id = appState.newlyCreatedConnectionId {
@@ -154,7 +176,7 @@ struct MainWindowView: View {
                     windowModel.browseContentSelection = .welcome
                 }
             } else {
-                windowModel.browseContentSelection = .emptyState
+                windowModel.browseContentSelection = .search(trimmed)
             }
         }
         .onChange(of: appState.sidebar.selectedConnectionIds) { oldSelection, newSelection in
@@ -179,14 +201,13 @@ struct MainWindowView: View {
     }
     
     private func titleForCurrentSurface() -> String {
+        let suffix: String
         switch browseCoordinator.selectedSurface {
         case .browse:
-            return "Browse"
+            suffix = "Browse"
         case .dockedSession(let id):
-            if let record = sessionRegistry.session(for: id) {
-                return record.title
-            }
-            return "Session"
+            suffix = sessionRegistry.session(for: id)?.title ?? "Session"
         }
+        return "Cautus Remote — \(suffix)"
     }
 }

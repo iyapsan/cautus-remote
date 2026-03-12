@@ -21,6 +21,7 @@ public final class RDPSession: ObservableObject, @unchecked Sendable {
     private let maxReconnectAttempts = 5
     private var pollTask: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
+    private var connectTask: Task<Bool, Never>?   // tracks the in-flight freerdp_connect call
     private var generation: UInt64 = 0 // bumps every connect/disconnect
     
     public init(config: RDPConfig) {
@@ -44,7 +45,7 @@ public final class RDPSession: ObservableObject, @unchecked Sendable {
         let currentGen = generation
         isRunning = true
         
-        rebuildContextForReconnect()
+        await rebuildContextForReconnect()
         
         guard let _ = self.context else {
             let err = NSError(domain: "CautusRDP", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to allocate RDP context"])
@@ -86,8 +87,8 @@ public final class RDPSession: ObservableObject, @unchecked Sendable {
         }
     }
     
-    private func rebuildContextForReconnect() {
-        destroyContextIfNeeded()
+    private func rebuildContextForReconnect() async {
+        await destroyContextIfNeeded()
         
         guard let ctx = RDPContext() else {
             print("[RDPSession] Failed to allocate RDP context during rebuild")
@@ -132,7 +133,8 @@ public final class RDPSession: ObservableObject, @unchecked Sendable {
         let cGwUseSameCreds = self.config.gwUseSameCreds
         let cIgnoreCert = self.config.ignoreCert
         
-        return await Task.detached {
+        // Store the task so disconnect() can await it before destroying the context
+        let task = Task.detached {
             return ctx.connect(
                 host: cHost,
                 port: cPort,
@@ -147,7 +149,11 @@ public final class RDPSession: ObservableObject, @unchecked Sendable {
                 gatewayUseSameCredentials: cGwUseSameCreds,
                 ignoreCert: cIgnoreCert
             )
-        }.value
+        }
+        self.connectTask = task
+        let result = await task.value
+        self.connectTask = nil
+        return result
     }
     /// Starts the background runloop to poll the FreeRDP context
     private func startPolling() {
@@ -218,16 +224,16 @@ public final class RDPSession: ObservableObject, @unchecked Sendable {
             while true {
                 if Task.isCancelled { return }
                 
-                let running = await MainActor.run { self.isRunning }
-                let gen = await MainActor.run { self.generation }
+                let (running, gen, attempt, maxAtt) = await MainActor.run {
+                    (self.isRunning, self.generation, self.reconnectAttempt, self.maxReconnectAttempts)
+                }
                 if !running || gen != myGen { return }
-                
-                let attempt = await MainActor.run { self.reconnectAttempt }
-                let maxAtt = await MainActor.run { self.maxReconnectAttempts }
                 
                 if attempt >= maxAtt {
                     await MainActor.run {
-                        self.state = .disconnected(NSError(domain: "CautusRDP", code: 3, userInfo: [NSLocalizedDescriptionKey: "Connection lost (\(reason))"]))
+                        self.state = .disconnected(NSError(
+                            domain: "CautusRDP", code: 3,
+                            userInfo: [NSLocalizedDescriptionKey: "Connection lost (\(reason))"]))
                     }
                     return
                 }
@@ -236,24 +242,24 @@ public final class RDPSession: ObservableObject, @unchecked Sendable {
                 await MainActor.run { self.reconnectAttempt = nextAttempt }
                 
                 let delay = await self.backoffSeconds(attempt: nextAttempt)
-                
                 await MainActor.run { self.state = .reconnecting(attempt: nextAttempt, max: maxAtt) }
                 
-                // Sleep cancellably
                 do {
                     try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 } catch {
-                    return // Task was cancelled
+                    return
                 }
                 
-                let runCheck = await self.isRunning
-                let genCheck = await self.generation
-                if Task.isCancelled || !runCheck || genCheck != myGen { return }
+                if Task.isCancelled { return }
+                let (runCheck, genCheck) = await MainActor.run { (self.isRunning, self.generation) }
+                if !runCheck || genCheck != myGen { return }
                 
-                // Tear down & rebuild context
-                await MainActor.run { self.rebuildContextForReconnect() }
+                // CRITICAL: Abort any in-flight connect, await its completion,
+                // then tear down and rebuild the context before the next attempt.
+                // This prevents concurrent freerdp_disconnect calls which cause
+                // the double-free (rdp_reset_free / Stream_EnsureValidity) crash.
+                await self.rebuildContextForReconnect()
                 
-                // Attempt connect
                 let ok = await self.tryConnectOnce()
                 
                 if ok {
@@ -263,16 +269,27 @@ public final class RDPSession: ObservableObject, @unchecked Sendable {
                         self.startPolling()
                     }
                     return
-                } else {
-                    // loop again for next attempt
-                    continue
                 }
+                // loop for next attempt
             }
         }
     }
+
     
-    private func destroyContextIfNeeded() {
+    private func destroyContextIfNeeded() async {
         if let ctx = self.context {
+            // Signal FreeRDP to abort any in-flight freerdp_connect() call.
+            // This is thread-safe and causes the blocking C call to return early.
+            ctx.abortConnect()
+            
+            // Wait for the in-flight connect task to fully exit before we call
+            // freerdp_disconnect. Without this wait, two concurrent calls to
+            // freerdp_disconnect on the same instance cause a double-free crash.
+            if let t = connectTask {
+                connectTask = nil
+                _ = await t.value
+            }
+            
             ctx.disconnect()
             ctx.destroy()
             self.context = nil
@@ -281,25 +298,25 @@ public final class RDPSession: ObservableObject, @unchecked Sendable {
     
     // MARK: - API
     
-    public func disconnect() {
+    public func disconnect() async {
         isRunning = false
         generation &+= 1 // Invalidates any active polling or connecting tasks
         
         pollTask?.cancel()
         reconnectTask?.cancel()
         
-        destroyContextIfNeeded()
+        await destroyContextIfNeeded()
         state = .disconnected(nil)
     }
 
-    public func fail(with error: Error) {
+    public func fail(with error: Error) async {
         isRunning = false
         generation &+= 1 // Invalidates any active polling or connecting tasks
         
         pollTask?.cancel()
         reconnectTask?.cancel()
         
-        destroyContextIfNeeded()
+        await destroyContextIfNeeded()
         state = .disconnected(error)
     }
     

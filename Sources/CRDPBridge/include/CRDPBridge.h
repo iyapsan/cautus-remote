@@ -58,6 +58,10 @@ void rdp_send_input_mouse(CRDPContextRef ctx, uint16_t flags, uint16_t x,
 // 5. Disconnect
 void rdp_disconnect(CRDPContextRef ctx);
 
+// 5a. Abort an in-progress connect (thread-safe signal to freerdp_connect)
+//     Call this before rdp_disconnect when a connect may be in-flight.
+void rdp_abort_connect(CRDPContextRef ctx);
+
 // 5b. Set Callbacks
 void rdp_set_certificate_callbacks(CRDPContextRef ctx,
                                    CRDPVerifyX509Callback verify_cb);

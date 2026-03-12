@@ -147,6 +147,14 @@ public class RDPContext: @unchecked Sendable {
         rdp_disconnect(ctx)
     }
     
+    /// Thread-safe signal that causes an in-flight `freerdp_connect()` to
+    /// return early. Call this before `disconnect()` whenever a connect may
+    /// still be running on another thread.
+    public func abortConnect() {
+        guard let ctx = ctx else { return }
+        rdp_abort_connect(ctx)
+    }
+    
     public func destroy() {
         if let ctx = ctx {
             RDPContext.registryLock.lock()

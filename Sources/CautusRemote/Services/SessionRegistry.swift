@@ -135,7 +135,7 @@ final class SessionRegistry {
             } catch {
                 await MainActor.run {
                     print("[SessionRegistry] Keychain failure: \(error)")
-                    rdpSession.fail(with: error)
+                    Task { await rdpSession.fail(with: error) }
                 }
             }
         }
@@ -159,7 +159,12 @@ final class SessionRegistry {
     func closeSession(_ id: UUID) {
         guard let record = activeSessions[id] else { return }
         print("[SessionRegistry] Terminating session runtime for: \(id)")
-        activeRuntimes[id]?.disconnect()
+        
+        // disconnect() is async (it aborts the in-flight connect and awaits it
+        // before calling freerdp_disconnect to avoid double-free crashes)
+        if let runtime = activeRuntimes[id] {
+            Task { await runtime.disconnect() }
+        }
         
         if case .detached(let windowID) = record.presentation {
             onCloseDetachedWindow?(windowID)

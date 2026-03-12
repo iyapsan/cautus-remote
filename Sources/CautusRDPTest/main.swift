@@ -128,7 +128,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ aNotification: Notification) {
         print("Disconnecting...")
-        rdpSession.disconnect()
+        let session = rdpSession
+        Task { await session?.disconnect() }
     }
     
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

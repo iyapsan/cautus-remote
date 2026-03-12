@@ -103,7 +103,7 @@ final class SessionManager {
             } catch {
                 await MainActor.run {
                     print("[SessionManager] Keychain access failed in detached task: \(error)")
-                    session.fail(with: error)
+                    Task { await session.fail(with: error) }
                 }
             }
         }
@@ -114,14 +114,14 @@ final class SessionManager {
     /// Close a session by ID.
     func close(sessionId: UUID) async {
         guard let session = sessions[sessionId] else { return }
-        session.disconnect()
+        await session.disconnect()
         sessions.removeValue(forKey: sessionId)
     }
 
     /// Reconnect a failed or disconnected session.
     func reconnect(sessionId: UUID) async throws {
         guard let session = sessions[sessionId] else { return }
-        session.disconnect()
+        await session.disconnect()
         try await session.connect()
     }
 

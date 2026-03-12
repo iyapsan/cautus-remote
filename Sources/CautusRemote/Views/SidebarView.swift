@@ -582,46 +582,11 @@ extension Color {
 
 // MARK: - Connections Section Header
 
-/// Custom section header for "Connections" that exposes "Edit Global Defaults…".
-///
-/// Design: label on left, subtle sliders icon on right — always visible at low opacity,
-/// accent color on hover for clear affordance.
-/// The sheet is NOT presented here — it lives in SidebarView.body for reliability.
+/// Section header for "Connections".
 private struct ConnectionsSectionHeader: View {
-    @Environment(AppState.self) private var appState
-    @EnvironmentObject private var windowModel: MainWindowViewModel
-    @State private var isHovering = false
-
     var body: some View {
-        HStack(spacing: 0) {
-            Label("Connections", systemImage: "server.rack")
-            Spacer()
-            // Always set inspectorSelection since this is the global root
-            Button {
-                windowModel.inspectorVisible = true
-                windowModel.inspectorSelection = .globalDefaults
-                windowModel.browseContentSelection = .welcome
-            } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.caption)
-                    .foregroundStyle(isHovering ? Color.accentColor : Color.secondary.opacity(0.4))
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Edit Global Defaults\u{2026}")
-            .onHover { isHovering = $0 }
-        }
-        .onHover { isHovering = $0 }
-        .contentShape(Rectangle())
-        .contextMenu {
-            Button {
-                windowModel.inspectorVisible = true
-                windowModel.inspectorSelection = .globalDefaults
-                windowModel.browseContentSelection = .welcome
-            } label: {
-                Label("Edit Global Defaults\u{2026}", systemImage: "slider.horizontal.3")
-            }
-        }
+        Label("Connections", systemImage: "server.rack")
     }
 }
+
 

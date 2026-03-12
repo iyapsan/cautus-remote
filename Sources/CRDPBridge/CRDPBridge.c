@@ -579,6 +579,17 @@ void rdp_disconnect(CRDPContextRef ctx) {
   freerdp_disconnect(impl->instance);
 }
 
+void rdp_abort_connect(CRDPContextRef ctx) {
+  if (!ctx)
+    return;
+  CRDPContextImpl *impl = (CRDPContextImpl *)ctx;
+  if (impl->instance) {
+    // Thread-safe FreeRDP signal: causes freerdp_connect() to return false
+    // on the next check inside the connect loop, allowing clean teardown.
+    freerdp_abort_connect_context(impl->instance->context);
+  }
+}
+
 void rdp_set_certificate_callbacks(CRDPContextRef ctx,
                                    CRDPVerifyX509Callback verify_cb) {
   if (!ctx)
